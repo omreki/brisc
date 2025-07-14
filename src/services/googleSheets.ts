@@ -1,7 +1,7 @@
 import { google } from 'googleapis'
 import { StudentResult, GoogleSheetsRow } from '@/types/student'
 import { User } from '@/types/auth'
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 
 const sheets = google.sheets('v4')
 
