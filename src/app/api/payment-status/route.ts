@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { googleSheetsService } from '@/services/googleSheets'
+import { intasendService } from '@/services/intasendService'
 import { PaymentRecord } from '@/types/student'
 
 export async function POST(request: NextRequest) {
   try {
-    const { paymentId, examNumber } = await request.json()
+    const { paymentId, examNumber, forceCheck } = await request.json()
 
     if (!paymentId && !examNumber) {
       return NextResponse.json({
@@ -37,26 +38,66 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    let currentStatus = paymentRecord.status
+    let updatedPayment = paymentRecord
+
+    // If payment is still pending or if forceCheck is true, verify with IntaSend
+    if ((currentStatus === 'pending' || forceCheck) && paymentRecord.paymentId) {
+      console.log(`Checking payment status with IntaSend for: ${paymentRecord.paymentId}`)
+      
+      try {
+        const intasendStatus = await intasendService.checkPaymentStatus(paymentRecord.paymentId)
+        
+        if (intasendStatus.success && intasendStatus.status !== currentStatus) {
+          console.log(`Payment status updated from ${currentStatus} to ${intasendStatus.status}`)
+          
+          // Update payment status in Google Sheets
+          const completedAt = intasendStatus.status === 'completed' ? new Date().toISOString() : undefined
+          const failureReason = intasendStatus.status === 'failed' ? intasendStatus.data?.failed_reason : undefined
+          
+          updatedPayment = await googleSheetsService.updatePaymentStatus(
+            paymentRecord.paymentId,
+            intasendStatus.status as any,
+            completedAt,
+            failureReason,
+            intasendStatus.data
+          ) || paymentRecord
+
+          currentStatus = intasendStatus.status
+
+          // If payment completed, trigger automatic result processing
+          if (intasendStatus.status === 'completed') {
+            console.log(`Payment completed via direct check: ${paymentRecord.paymentId}`)
+            // You could trigger the same logic as in webhook here if needed
+          }
+        }
+      } catch (error) {
+        console.error('Error checking payment status with IntaSend:', error)
+        // Continue with existing status from database
+      }
+    }
+
     // Return detailed payment status
     const response = {
       success: true,
-      status: paymentRecord.status,
+      status: currentStatus,
       paymentRecord: {
-        id: paymentRecord.id,
-        paymentId: paymentRecord.paymentId,
-        examNumber: paymentRecord.examNumber,
-        amount: paymentRecord.amount,
-        currency: paymentRecord.currency,
-        status: paymentRecord.status,
-        paymentMethod: paymentRecord.paymentMethod,
-        createdAt: paymentRecord.createdAt,
-        updatedAt: paymentRecord.updatedAt,
-        completedAt: paymentRecord.completedAt,
-        failureReason: paymentRecord.failureReason
+        id: updatedPayment.id,
+        paymentId: updatedPayment.paymentId,
+        examNumber: updatedPayment.examNumber,
+        amount: updatedPayment.amount,
+        currency: updatedPayment.currency,
+        status: currentStatus,
+        paymentMethod: updatedPayment.paymentMethod,
+        createdAt: updatedPayment.createdAt,
+        updatedAt: updatedPayment.updatedAt,
+        completedAt: updatedPayment.completedAt,
+        failureReason: updatedPayment.failureReason
       },
-      verified: paymentRecord.status === 'completed',
-      message: getStatusMessage(paymentRecord.status, paymentRecord.failureReason),
-      canRetry: paymentRecord.status === 'failed' || paymentRecord.status === 'cancelled'
+      verified: currentStatus === 'completed',
+      message: getStatusMessage(currentStatus, updatedPayment.failureReason),
+      canRetry: currentStatus === 'failed' || currentStatus === 'cancelled',
+      checkedWithProvider: (currentStatus === 'pending' || forceCheck) // Indicate if we checked with IntaSend
     }
 
     return NextResponse.json(response)
@@ -76,6 +117,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const paymentId = searchParams.get('paymentId')
     const examNumber = searchParams.get('examNumber')
+    const forceCheck = searchParams.get('forceCheck') === 'true'
 
     if (!paymentId && !examNumber) {
       return NextResponse.json({
@@ -105,25 +147,59 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    let currentStatus = paymentRecord.status
+    let updatedPayment = paymentRecord
+
+    // If payment is still pending or if forceCheck is true, verify with IntaSend
+    if ((currentStatus === 'pending' || forceCheck) && paymentRecord.paymentId) {
+      console.log(`Checking payment status with IntaSend for: ${paymentRecord.paymentId}`)
+      
+      try {
+        const intasendStatus = await intasendService.checkPaymentStatus(paymentRecord.paymentId)
+        
+        if (intasendStatus.success && intasendStatus.status !== currentStatus) {
+          console.log(`Payment status updated from ${currentStatus} to ${intasendStatus.status}`)
+          
+          // Update payment status in Google Sheets
+          const completedAt = intasendStatus.status === 'completed' ? new Date().toISOString() : undefined
+          const failureReason = intasendStatus.status === 'failed' ? intasendStatus.data?.failed_reason : undefined
+          
+          updatedPayment = await googleSheetsService.updatePaymentStatus(
+            paymentRecord.paymentId,
+            intasendStatus.status as any,
+            completedAt,
+            failureReason,
+            intasendStatus.data
+          ) || paymentRecord
+
+          currentStatus = intasendStatus.status
+        }
+      } catch (error) {
+        console.error('Error checking payment status with IntaSend:', error)
+        // Continue with existing status from database
+      }
+    }
+
     const response = {
       success: true,
-      status: paymentRecord.status,
+      status: currentStatus,
       paymentRecord: {
-        id: paymentRecord.id,
-        paymentId: paymentRecord.paymentId,
-        examNumber: paymentRecord.examNumber,
-        amount: paymentRecord.amount,
-        currency: paymentRecord.currency,
-        status: paymentRecord.status,
-        paymentMethod: paymentRecord.paymentMethod,
-        createdAt: paymentRecord.createdAt,
-        updatedAt: paymentRecord.updatedAt,
-        completedAt: paymentRecord.completedAt,
-        failureReason: paymentRecord.failureReason
+        id: updatedPayment.id,
+        paymentId: updatedPayment.paymentId,
+        examNumber: updatedPayment.examNumber,
+        amount: updatedPayment.amount,
+        currency: updatedPayment.currency,
+        status: currentStatus,
+        paymentMethod: updatedPayment.paymentMethod,
+        createdAt: updatedPayment.createdAt,
+        updatedAt: updatedPayment.updatedAt,
+        completedAt: updatedPayment.completedAt,
+        failureReason: updatedPayment.failureReason
       },
-      verified: paymentRecord.status === 'completed',
-      message: getStatusMessage(paymentRecord.status, paymentRecord.failureReason),
-      canRetry: paymentRecord.status === 'failed' || paymentRecord.status === 'cancelled'
+      verified: currentStatus === 'completed',
+      message: getStatusMessage(currentStatus, updatedPayment.failureReason),
+      canRetry: currentStatus === 'failed' || currentStatus === 'cancelled',
+      checkedWithProvider: (currentStatus === 'pending' || forceCheck)
     }
 
     return NextResponse.json(response)

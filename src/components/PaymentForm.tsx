@@ -118,21 +118,93 @@ export default function PaymentForm({
     }
   }
 
+  const handleForceVerification = async () => {
+    if (!currentPaymentId) {
+      toast.error('No payment ID available for verification')
+      return
+    }
+
+    setIsLoading(true)
+    setPaymentProgress('Force checking with payment provider...')
+    
+    try {
+      const response = await fetch('/api/manual-verify-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          paymentId: currentPaymentId,
+          examNumber,
+        }),
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        if (result.status === 'completed' && result.verified) {
+          setPaymentProgress('Payment verified! Loading your results...')
+          toast.success('Payment found and verified! 🎉')
+          
+          const paymentInfo = email 
+            ? { paymentId: currentPaymentId, userEmail: email }
+            : undefined
+          
+          setTimeout(() => {
+            onPaymentSuccess(paymentInfo)
+          }, 1000)
+        } else if (result.status === 'failed') {
+          setPaymentProgress('')
+          setPaymentInitiated(false)
+          toast.error(`Payment verification failed: ${result.message}`)
+        } else if (result.status === 'pending') {
+          toast('Payment is still being processed. Please wait a moment.')
+          setPaymentProgress('Payment still pending after verification...')
+          // Restart polling
+          if (currentPaymentId) {
+            pollPaymentStatus(currentPaymentId, '')
+          }
+        } else {
+          toast.error(`Payment status: ${result.status}`)
+          setPaymentProgress(`Status: ${result.status}`)
+        }
+      } else {
+        toast.error(result.message || 'Verification failed. Please try again.')
+        setPaymentProgress('Verification failed')
+      }
+    } catch (error) {
+      console.error('Force verification error:', error)
+      toast.error('Error during verification. Please try again.')
+      setPaymentProgress('Verification error')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const pollPaymentStatus = async (paymentId: string, transactionId: string) => {
     setIsPolling(true)
     let attempts = 0
-    const maxAttempts = 24 // 2 minutes of polling (5-second intervals)
+    const maxAttempts = 36 // 3 minutes of polling (5-second intervals)
+    let forceCheckUsed = false
     
     const poll = async (): Promise<void> => {
       if (!isPolling || attempts >= maxAttempts) {
         setIsPolling(false)
         if (attempts >= maxAttempts) {
           setShowManualVerification(true)
+          setPaymentProgress('Taking longer than expected. You can verify manually below.')
         }
         return
       }
       
       attempts++
+      
+      // After 1 minute (12 attempts), start force checking with IntaSend
+      const shouldForceCheck = attempts > 12 && !forceCheckUsed
+      if (shouldForceCheck) {
+        forceCheckUsed = true
+        setPaymentProgress('Verifying with payment provider...')
+      }
       
       try {
         const response = await fetch('/api/payment-status', {
@@ -143,6 +215,7 @@ export default function PaymentForm({
           body: JSON.stringify({
             paymentId,
             examNumber,
+            forceCheck: shouldForceCheck,
           }),
         })
         
@@ -159,9 +232,10 @@ export default function PaymentForm({
               ? { paymentId, userEmail: email }
               : undefined
             
+            // Redirect to results immediately
             setTimeout(() => {
               onPaymentSuccess(paymentInfo)
-            }, 1500)
+            }, 1000)
             return
           } else if (result.status === 'failed') {
             setIsPolling(false)
@@ -176,22 +250,38 @@ export default function PaymentForm({
             toast.error('Payment was cancelled')
             return
           } else if (result.status === 'pending') {
-            // Update progress message for pending payments
-            setPaymentProgress('Payment is being processed...')
+            // Update progress message based on attempts
+            if (attempts <= 6) {
+              setPaymentProgress('Waiting for M-Pesa confirmation...')
+            } else if (attempts <= 12) {
+              setPaymentProgress('Payment is being processed...')
+            } else if (attempts <= 24) {
+              setPaymentProgress('Verifying payment status...')
+            } else {
+              setPaymentProgress('Final verification in progress...')
+            }
+          }
+          
+          // Show helpful messages to user
+          if (result.checkedWithProvider && result.status === 'pending') {
+            setPaymentProgress('Double-checked with payment provider. Still processing...')
           }
         }
         
         // Continue polling if payment not yet completed
-        setTimeout(poll, 5000) // Poll every 5 seconds
+        const nextPollDelay = attempts > 24 ? 8000 : 5000 // Slow down polling after 2 minutes
+        setTimeout(poll, nextPollDelay)
         
       } catch (error) {
         console.error('Payment status check error:', error)
-        setTimeout(poll, 5000) // Continue polling even on error
+        // Update user about the error but continue polling
+        setPaymentProgress('Connection issue, retrying...')
+        setTimeout(poll, 7000) // Wait a bit longer on error
       }
     }
     
     // Start polling after initial delay
-    setTimeout(poll, 5000)
+    setTimeout(poll, 3000) // Start checking after 3 seconds
   }
 
   const formatPhoneNumber = (value: string) => {
@@ -374,28 +464,48 @@ export default function PaymentForm({
                   <AlertCircle className="h-5 w-5 text-orange-600" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-orange-900 mb-2">Manual Verification</h3>
+                  <h3 className="font-semibold text-orange-900 mb-2">Payment Verification</h3>
                   <p className="text-orange-800 text-sm leading-relaxed">
-                    If you've completed the M-Pesa payment but it's taking longer to verify automatically, 
-                    you can confirm manually below.
+                    If you've completed the M-Pesa payment, you can force a verification check or confirm manually.
                   </p>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col gap-3">
                 <button
-                  onClick={() => handleManualConfirmation(true)}
-                  className="btn-success flex-1"
+                  onClick={handleForceVerification}
+                  disabled={isLoading}
+                  className="btn-primary w-full"
                 >
-                  <CheckCircle className="h-4 w-4" />
-                  Yes, I completed payment
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4" />
+                      Force Check Payment Status
+                    </>
+                  )}
                 </button>
-                <button
-                  onClick={() => handleManualConfirmation(false)}
-                  className="btn-secondary flex-1"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  No, go back
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={() => handleManualConfirmation(true)}
+                    disabled={isLoading}
+                    className="btn-success flex-1"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Yes, I completed payment
+                  </button>
+                  <button
+                    onClick={() => handleManualConfirmation(false)}
+                    disabled={isLoading}
+                    className="btn-secondary flex-1"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    No, go back
+                  </button>
+                </div>
               </div>
             </div>
           )}

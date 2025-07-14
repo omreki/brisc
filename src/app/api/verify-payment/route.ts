@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { googleSheetsService } from '@/services/googleSheets'
+import { intasendService } from '@/services/intasendService'
 import { PaymentVerificationResult } from '@/types/student'
+import { EmailService } from '@/services/emailService'
 import jwt from 'jsonwebtoken'
 
 export async function POST(request: NextRequest) {
@@ -199,12 +201,99 @@ async function reconcilePaymentById(paymentId: string): Promise<void> {
       return
     }
 
-    // Here you could add additional logic to check with IntaSend API
-    // For now, we'll just log that reconciliation was attempted
-    console.log(`Payment reconciliation completed for: ${paymentId}`)
+    // Check with IntaSend API for current status
+    try {
+      const intasendStatus = await intasendService.checkPaymentStatus(paymentId)
+      
+      if (intasendStatus.success && intasendStatus.status !== paymentRecord.status) {
+        console.log(`Reconciliation: Payment status updated from ${paymentRecord.status} to ${intasendStatus.status}`)
+        
+        // Update payment status in Google Sheets
+        const completedAt = intasendStatus.status === 'completed' ? new Date().toISOString() : undefined
+        const failureReason = intasendStatus.status === 'failed' ? intasendStatus.data?.failed_reason : undefined
+        
+        await googleSheetsService.updatePaymentStatus(
+          paymentId,
+          intasendStatus.status as any,
+          completedAt,
+          failureReason,
+          intasendStatus.data
+        )
+
+        // If payment completed, trigger automatic result processing
+        if (intasendStatus.status === 'completed') {
+          await handleCompletedPaymentVerification(paymentRecord, intasendStatus.data)
+        }
+      }
+    } catch (error) {
+      console.error(`Error checking IntaSend status during reconciliation for ${paymentId}:`, error)
+    }
     
   } catch (error) {
     console.error(`Error reconciling payment ${paymentId}:`, error)
+  }
+}
+
+async function handleCompletedPaymentVerification(paymentRecord: any, intasendData: any): Promise<void> {
+  try {
+    const { examNumber, email, userId } = paymentRecord
+    
+    console.log(`Processing completed payment verification for exam: ${examNumber}`)
+    
+    // Get the student result
+    const studentResult = await googleSheetsService.getStudentResult(examNumber)
+    
+    if (!studentResult) {
+      console.warn(`No student result found for exam number: ${examNumber}`)
+      return
+    }
+
+    // If user is logged in (has userId), save the result to their account
+    if (userId) {
+      try {
+        await googleSheetsService.saveUserResult(
+          userId,
+          examNumber,
+          studentResult.name,
+          paymentRecord.paymentId,
+          studentResult
+        )
+        console.log(`Result saved to user account for userId: ${userId}`)
+      } catch (error) {
+        console.error('Error saving result to user account:', error)
+      }
+    }
+
+    // Send email notification if email is available
+    if (email) {
+      try {
+        const emailService = new EmailService()
+        
+        // Send payment receipt
+        await emailService.sendPaymentReceiptEmail(
+          email,
+          studentResult.name,
+          examNumber,
+          paymentRecord.amount,
+          paymentRecord.paymentId
+        )
+
+        // Send results email
+        await emailService.sendResultsEmail(
+          email,
+          studentResult.name,
+          examNumber,
+          studentResult
+        )
+        
+        console.log(`Verification emails sent to: ${email}`)
+      } catch (error) {
+        console.error('Error sending verification emails:', error)
+      }
+    }
+
+  } catch (error) {
+    console.error('Error in handleCompletedPaymentVerification:', error)
   }
 }
 
