@@ -162,13 +162,28 @@ export class GoogleSheetsService {
 
   async validateUserPassword(email: string, password: string): Promise<User | null> {
     try {
-      const authClient = await this.auth.getClient()
+      // Check environment variables first
       const spreadsheetId = process.env.GOOGLE_SHEETS_SHEET_ID
+      const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL
+      const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY
 
       if (!spreadsheetId) {
         throw new Error('Google Sheets ID not configured')
       }
 
+      if (!clientEmail) {
+        throw new Error('Google Sheets client email not configured')
+      }
+
+      if (!privateKey) {
+        throw new Error('Google Sheets private key not configured')
+      }
+
+      console.log('Attempting to authenticate with Google Sheets...')
+      const authClient = await this.auth.getClient()
+      console.log('Google Sheets authentication successful')
+
+      console.log('Fetching user data from spreadsheet...')
       const response = await sheets.spreadsheets.values.get({
         auth: authClient,
         spreadsheetId,
@@ -177,19 +192,31 @@ export class GoogleSheetsService {
 
       const rows = response.data.values
       if (!rows || rows.length === 0) {
+        console.log('No users found in spreadsheet')
         return null
       }
+
+      console.log(`Found ${rows.length} rows in Users sheet`)
 
       // Find user by email
       const userRow = rows.find(row => row[1] === email)
       
       if (!userRow) {
+        console.log(`User with email ${email} not found`)
         return null
       }
 
+      console.log(`User found: ${email}`)
+
       // Verify password
       const hashedPassword = userRow[2]
+      if (!hashedPassword) {
+        console.log('No password hash found for user')
+        return null
+      }
+
       const isPasswordValid = await bcrypt.compare(password, hashedPassword)
+      console.log(`Password validation result: ${isPasswordValid}`)
       
       if (!isPasswordValid) {
         return null
@@ -212,9 +239,20 @@ export class GoogleSheetsService {
         createdAt: userRow[14] || '',
         updatedAt: userRow[15] || '',
       }
-    } catch (error) {
-      console.error('Error validating user password:', error)
-      throw error
+    } catch (error: any) {
+      console.error('validateUserPassword error:', error)
+      console.error('Error details:', error.message)
+      
+      // Re-throw with more context
+      if (error.message?.includes('not configured')) {
+        throw new Error(`Google Sheets configuration error: ${error.message}`)
+      } else if (error.message?.includes('insufficient_scope')) {
+        throw new Error('Google Sheets API: Insufficient permissions')
+      } else if (error.message?.includes('Invalid credentials')) {
+        throw new Error('Google Sheets API: Invalid credentials')
+      } else {
+        throw new Error(`Google Sheets API error: ${error.message}`)
+      }
     }
   }
 

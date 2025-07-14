@@ -15,6 +15,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check if JWT secret is available
+    const jwtSecret = process.env.JWT_SECRET
+    if (!jwtSecret) {
+      console.error('JWT_SECRET not configured')
+      return NextResponse.json(
+        { success: false, message: 'Server configuration error' },
+        { status: 500 }
+      )
+    }
+
     // Validate user credentials
     const user = await googleSheetsService.validateUserPassword(email, password)
 
@@ -28,7 +38,7 @@ export async function POST(request: NextRequest) {
     // Generate JWT token
     const token = jwt.sign(
       { userId: user.id, email: user.email },
-      process.env.JWT_SECRET || 'your-secret-key',
+      jwtSecret,
       { expiresIn: '7d' }
     )
 
@@ -51,9 +61,18 @@ export async function POST(request: NextRequest) {
     return response
   } catch (error: any) {
     console.error('Login error:', error)
+    console.error('Error stack:', error.stack)
+
+    // Return more specific error messages for debugging
+    let errorMessage = 'Login failed'
+    if (error.message?.includes('Google Sheets')) {
+      errorMessage = 'Database connection error'
+    } else if (error.message?.includes('JWT')) {
+      errorMessage = 'Authentication service error'
+    }
 
     return NextResponse.json(
-      { success: false, message: 'Login failed' },
+      { success: false, message: errorMessage, error: error.message },
       { status: 500 }
     )
   }
