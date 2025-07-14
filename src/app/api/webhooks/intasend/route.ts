@@ -237,21 +237,4 @@ function mapIntaSendStatus(state: string): string {
   }
   
   return statusMap[state?.toUpperCase()] || 'pending'
-}
-
-// Export function to get payment status from webhook data
-export function getWebhookPaymentStatus(invoiceId: string) {
-  return paymentStatuses.get(invoiceId)
-}
-
-// Clean up old payment statuses (optional, for memory management)
-export function cleanupOldStatuses() {
-  const now = new Date()
-  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
-  
-  Array.from(paymentStatuses.entries()).forEach(([invoiceId, statusData]) => {
-    if (statusData.timestamp < oneHourAgo) {
-      paymentStatuses.delete(invoiceId)
-    }
-  })
 } 
