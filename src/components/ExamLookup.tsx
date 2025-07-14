@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Loader2, CreditCard, AlertCircle, FileText, BookOpen, CheckCircle, Shield } from 'lucide-react'
+import { Search, Loader2, CreditCard, AlertCircle, FileText, BookOpen, CheckCircle, Shield, XCircle } from 'lucide-react'
 import { StudentResult, ExamLookupResponse } from '@/types/student'
 import toast from 'react-hot-toast'
 
@@ -16,6 +16,7 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null)
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false)
   const [verificationExamNumber, setVerificationExamNumber] = useState('')
+  const [verificationError, setVerificationError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -58,15 +59,17 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
     }
   }
 
-  const handleProviderVerification = async () => {
+  const handlePaymentSheetVerification = async () => {
     if (!verificationExamNumber.trim()) {
       toast.error('Please enter your exam number for verification')
       return
     }
 
     setIsVerifyingPayment(true)
+    setVerificationError(null)
     
     try {
+      // Check payments sheet directly for this exam number
       const response = await fetch('/api/verify-payment', {
         method: 'POST',
         headers: {
@@ -74,16 +77,17 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
         },
         body: JSON.stringify({
           examNumber: verificationExamNumber.trim(),
-          forceRefresh: true, // Direct provider check
+          checkPaymentsSheetOnly: true, // Flag to only check payments sheet
         }),
       })
       
       const result = await response.json()
       
-      if (result.success && result.isValid) {
-        toast.success('Payment verified with provider! 🎉')
+      if (result.success && result.isValid && result.hasValidPayment) {
+        // Valid payment found - redirect to results immediately
+        toast.success('Valid payment found! Loading your results...')
         
-        // Get exam results after successful payment verification
+        // Get exam results
         const examResponse = await fetch('/api/lookup-exam', {
           method: 'POST',
           headers: {
@@ -100,12 +104,16 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
           toast.error('Payment verified but error loading results. Please try again.')
         }
       } else {
-        const message = result.message || 'Payment not found or not completed with provider'
-        toast.error(`Verification failed: ${message}`)
+        // No valid payment found - show error and request new payment
+        const errorMessage = result.message || 'No valid payment found for this exam number'
+        setVerificationError(errorMessage)
+        toast.error(errorMessage)
       }
     } catch (error) {
-      console.error('Provider verification error:', error)
-      toast.error('Error during verification. Please try again.')
+      console.error('Payment sheet verification error:', error)
+      const errorMsg = 'Error checking payment records. Please try again.'
+      setVerificationError(errorMsg)
+      toast.error(errorMsg)
     } finally {
       setIsVerifyingPayment(false)
     }
@@ -176,16 +184,16 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
         )}
       </form>
 
-      {/* Payment Verification with Provider Section */}
+      {/* Payment Verification Section */}
       <div className="bg-white rounded-3xl shadow-2xl p-8">
         <div className="flex items-start space-x-4 mb-6">
-          <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
-            <Shield className="h-6 w-6 text-green-600" />
+          <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Shield className="h-6 w-6 text-blue-600" />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-green-900 mb-2">Already Made Payment?</h3>
-            <p className="text-green-800 text-sm leading-relaxed">
-              If you've already paid for your exam results, verify your payment directly with our payment provider (IntaSend) to access your results immediately.
+            <h3 className="text-xl font-bold text-blue-900 mb-2">Already Made Payment?</h3>
+            <p className="text-blue-800 text-sm leading-relaxed">
+              If you've already paid for your exam results, enter your exam number below to check for valid payments in our records.
             </p>
           </div>
         </div>
@@ -193,13 +201,16 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
         <div className="space-y-4">
           <div>
             <label htmlFor="verificationExamNumber" className="block text-sm font-medium text-gray-700 mb-2">
-              Exam Number for Verification
+              Exam Number for Payment Verification
             </label>
             <input
               type="text"
               id="verificationExamNumber"
               value={verificationExamNumber}
-              onChange={(e) => setVerificationExamNumber(e.target.value)}
+              onChange={(e) => {
+                setVerificationExamNumber(e.target.value)
+                setVerificationError(null) // Clear error when user types
+              }}
               placeholder="Enter exam number"
               className="input-field"
               disabled={isVerifyingPayment}
@@ -207,27 +218,54 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
           </div>
           
           <button
-            onClick={handleProviderVerification}
+            onClick={handlePaymentSheetVerification}
             disabled={isVerifyingPayment || !verificationExamNumber.trim()}
-            className="btn-success w-full"
+            className="btn-primary w-full"
           >
             {isVerifyingPayment ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Verifying with Provider...
+                Checking Payment Records...
               </>
             ) : (
               <>
                 <Shield className="h-4 w-4" />
-                Verify Payment with Provider
+                Check for Valid Payment
               </>
             )}
           </button>
         </div>
         
-        <div className="mt-4 p-4 bg-green-50 rounded-xl border border-green-200">
-          <p className="text-green-800 text-sm">
-            <strong>What this does:</strong> This button checks directly with IntaSend (our payment provider) to verify if your payment was successfully completed. This gives you the most accurate and up-to-date payment status.
+        {/* Verification Error Display */}
+        {verificationError && (
+          <div className="mt-6 p-6 bg-gradient-to-r from-red-50 to-red-100 rounded-2xl border border-red-200">
+            <div className="flex items-start space-x-4">
+              <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <XCircle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-red-900 mb-2">No Valid Payment Found</h3>
+                <p className="text-red-800 text-sm leading-relaxed mb-4">
+                  {verificationError}
+                </p>
+                <div className="bg-red-50 p-4 rounded-xl border border-red-200">
+                  <h4 className="font-medium text-red-900 mb-2">What to do next:</h4>
+                  <ul className="text-red-800 text-sm space-y-1">
+                    <li>• Please make a payment using the search form above</li>
+                    <li>• Make sure you entered the correct exam number</li>
+                    <li>• If you recently made a payment, please wait a few minutes and try again</li>
+                    <li>• Contact support if you believe this is an error</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Information about what this check does */}
+        <div className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+          <p className="text-blue-800 text-sm">
+            <strong>What this does:</strong> This button checks our payment records directly to see if you have a completed payment for your exam number. If a valid payment is found, you'll be taken to your results immediately. If no payment exists, you'll need to make a payment first.
           </p>
         </div>
       </div>
@@ -255,13 +293,13 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
             <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
               <span className="text-xs font-semibold text-blue-600">3</span>
             </div>
-            <p>Once verified, you can view and download your exam results instantly</p>
+            <p>Once payment is completed, you can view and download your exam results as PDF</p>
           </div>
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
               <span className="text-xs font-semibold text-blue-600">4</span>
             </div>
-            <p>If you've already paid, use the "Verify Payment with Provider" section above</p>
+            <p>If you've already paid, use the "Check for Valid Payment" section above</p>
           </div>
         </div>
       </div>

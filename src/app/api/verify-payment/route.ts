@@ -8,7 +8,7 @@ import jwt from 'jsonwebtoken'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { examNumber, paymentId, forceRefresh } = body
+    const { examNumber, paymentId, forceRefresh, checkPaymentsSheetOnly } = body
 
     if (!examNumber && !paymentId) {
       return NextResponse.json({
@@ -31,6 +31,40 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       // Token is optional for this endpoint, so we don't fail if it's invalid
       console.log('No valid token provided for payment verification')
+    }
+
+    // Handle payments sheet only verification (simple check with no fallbacks)
+    if (checkPaymentsSheetOnly) {
+      console.log('Checking payments sheet only for exam:', examNumber)
+      
+      const verificationResult = await googleSheetsService.verifyPaymentForExamAccess(examNumber!, userId)
+      
+      if (verificationResult.isValid) {
+        // Get student result to include in response
+        const studentResult = await googleSheetsService.getStudentResult(examNumber!)
+        
+        return NextResponse.json({
+          success: true,
+          isValid: true,
+          hasValidPayment: true,
+          message: 'Valid payment found in records',
+          paymentRecord: verificationResult.paymentRecord,
+          studentResult: studentResult || undefined,
+          verificationSource: 'payments_sheet',
+          timestamp: new Date().toISOString()
+        })
+      } else {
+        // No valid payment found - return clear error without fallback options
+        return NextResponse.json({
+          success: false,
+          isValid: false,
+          hasValidPayment: verificationResult.hasValidPayment,
+          message: verificationResult.message || 'No completed payment found for this exam number',
+          paymentRecord: verificationResult.paymentRecord,
+          verificationSource: 'payments_sheet',
+          timestamp: new Date().toISOString()
+        })
+      }
     }
 
     let verificationResult: PaymentVerificationResult & { 
@@ -216,19 +250,19 @@ async function verifyWithProviderByPaymentId(paymentId: string, userId?: string)
         }
       }
 
-      // Get student result
-      const studentResult = await googleSheetsService.getStudentResult(paymentRecord.examNumber)
-      
-      return {
-        isValid: true,
-        hasValidPayment: true,
-        message: 'Payment verified successfully with IntaSend provider',
-        paymentRecord,
-        studentResult,
-        verificationSource: 'provider_direct',
-        providerStatus: providerResult.status,
-        providerVerified: true
-      }
+              // Get student result
+        const studentResult = await googleSheetsService.getStudentResult(paymentRecord.examNumber)
+        
+        return {
+          isValid: true,
+          hasValidPayment: true,
+          message: 'Payment verified successfully with IntaSend provider',
+          paymentRecord,
+          studentResult: studentResult || undefined,
+          verificationSource: 'provider_direct',
+          providerStatus: providerResult.status,
+          providerVerified: true
+        }
     } else {
       return {
         isValid: false,
@@ -300,7 +334,7 @@ async function verifyWithProviderByExamNumber(examNumber: string, userId?: strin
           hasValidPayment: true,
           message: 'Payment verified successfully with IntaSend provider',
           paymentRecord: { ...payment, status: 'completed' },
-          studentResult,
+          studentResult: studentResult || undefined,
           verificationSource: 'provider_direct',
           providerStatus: providerResult.status,
           providerVerified: true
