@@ -19,6 +19,7 @@ export default function Home() {
   const [examNumber, setExamNumber] = useState('')
   const [paymentData, setPaymentData] = useState<{paymentId: string; userEmail: string} | null>(null)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+  const [paymentVerified, setPaymentVerified] = useState(false)
 
   // Auto-redirect to dashboard when user becomes authenticated
   useEffect(() => {
@@ -37,6 +38,7 @@ export default function Home() {
     setStep('lookup')
     setStudentData(null)
     setExamNumber('')
+    setPaymentVerified(false)
   }
 
   const handleNavigateToExamPortal = () => {
@@ -50,6 +52,7 @@ export default function Home() {
   const handleExamFound = (data: StudentResult, examNum: string) => {
     setStudentData(data)
     setExamNumber(examNum)
+    setPaymentVerified(true) // Payment was verified since we can access results
     setStep('results') // Skip payment step since payment has been verified
   }
 
@@ -83,6 +86,7 @@ export default function Home() {
     
     setStudentData(dummyStudentData)
     setExamNumber(examNum)
+    setPaymentVerified(false) // Payment not verified yet
     setStep('payment')
   }
 
@@ -92,6 +96,9 @@ export default function Home() {
     if (paymentInfo) {
       setPaymentData(paymentInfo)
     }
+    
+    // Mark payment as verified since payment success was called
+    setPaymentVerified(true)
     
     // Fetch actual student results after successful payment
     try {
@@ -128,37 +135,34 @@ export default function Home() {
     setStudentData(null)
     setExamNumber('')
     setPaymentData(null)
-    setIsProcessingPayment(false)
+    setPaymentVerified(false)
   }
 
-  // Show loading state while checking authentication
+  // Show authentication page if not authenticated
+  if (!isAuthenticated && !loading) {
+    return <AuthPage onAuthSuccess={handleAuthSuccess} />
+  }
+
+  // Show loading if still checking authentication
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="text-center slide-up">
-          <div className="loading-spinner mx-auto mb-8 w-16 h-16"></div>
-          <h2 className="text-subsection-title mb-4">Loading...</h2>
-          <p className="text-body">Please wait while we prepare your session</p>
+        <div className="text-center">
+          <div className="loading-spinner mx-auto mb-4 w-12 h-12"></div>
+          <p className="text-gray-600">Loading...</p>
         </div>
       </div>
     )
   }
 
-  // Show auth page if not authenticated
-  if (!isAuthenticated) {
-    return <AuthPage onAuthSuccess={handleAuthSuccess} />
-  }
-
-  // Show dashboard if authenticated
-  if (currentView === 'dashboard') {
+  // Show dashboard if authenticated and on dashboard view
+  if (isAuthenticated && currentView === 'dashboard') {
     return (
-      <AuthGuard>
-        <Dashboard
-          user={user!}
-          onLogout={handleLogout}
-          onNavigateToExamPortal={handleNavigateToExamPortal}
-        />
-      </AuthGuard>
+      <Dashboard 
+        user={user!} 
+        onLogout={handleLogout}
+        onNavigateToExamPortal={handleNavigateToExamPortal}
+      />
     )
   }
 
@@ -193,7 +197,7 @@ export default function Home() {
           </div>
 
           {/* Progress Steps */}
-          <div className="progress-modern mb-12">
+          <div className="flex items-center justify-center mb-12 fade-in">
             <div className="progress-step">
               <div className={`progress-step-icon ${
                 step === 'lookup' 
@@ -300,6 +304,7 @@ export default function Home() {
                   studentData={studentData}
                   examNumber={examNumber}
                   onStartOver={handleStartOver}
+                  paymentVerified={paymentVerified}
                 />
               )}
             </div>

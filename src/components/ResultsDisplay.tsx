@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Download, RotateCcw, Award, User, Hash, CheckCircle, Star, Trophy, BookOpen, Calendar } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Download, RotateCcw, Award, User, Hash, CheckCircle, Star, Trophy, BookOpen, Calendar, AlertCircle } from 'lucide-react'
 import { StudentResult } from '@/types/student'
 import { toast } from 'react-hot-toast'
 
@@ -9,12 +9,61 @@ interface ResultsDisplayProps {
   studentData: StudentResult
   examNumber: string
   onStartOver: () => void
+  paymentVerified?: boolean
 }
 
-export default function ResultsDisplay({ studentData, examNumber, onStartOver }: ResultsDisplayProps) {
+export default function ResultsDisplay({ studentData, examNumber, onStartOver, paymentVerified = false }: ResultsDisplayProps) {
   const [isDownloading, setIsDownloading] = useState(false)
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false)
+  const [paymentVerificationResult, setPaymentVerificationResult] = useState<any>(null)
+
+  // Check payment verification on component mount if not already verified
+  useEffect(() => {
+    if (!paymentVerified) {
+      verifyPaymentStatus()
+    }
+  }, [examNumber, paymentVerified])
+
+  const verifyPaymentStatus = async () => {
+    setIsVerifyingPayment(true)
+    try {
+      const response = await fetch('/api/verify-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          examNumber,
+          forceRefresh: true,
+        }),
+      })
+      
+      const result = await response.json()
+      setPaymentVerificationResult(result)
+      
+      if (!result.success || !result.isValid) {
+        toast.error('Payment verification failed. Download not available.')
+      }
+    } catch (error) {
+      console.error('Payment verification error:', error)
+      setPaymentVerificationResult({
+        success: false,
+        message: 'Unable to verify payment status'
+      })
+    } finally {
+      setIsVerifyingPayment(false)
+    }
+  }
 
   const handleDownload = async () => {
+    // Check payment verification before allowing download
+    const isPaymentValid = paymentVerified || (paymentVerificationResult?.success && paymentVerificationResult?.isValid)
+    
+    if (!isPaymentValid) {
+      toast.error('Download not available. Payment verification required.')
+      return
+    }
+
     setIsDownloading(true)
     try {
       // Dynamic import to ensure PDF generation only happens client-side
@@ -27,6 +76,10 @@ export default function ResultsDisplay({ studentData, examNumber, onStartOver }:
     } finally {
       setIsDownloading(false)
     }
+  }
+
+  const handleManualPaymentVerification = async () => {
+    await verifyPaymentStatus()
   }
 
   // Get all subject fields and their values
@@ -106,13 +159,72 @@ export default function ResultsDisplay({ studentData, examNumber, onStartOver }:
   }
 
   const performance = getOverallPerformance()
+  
+  // Determine if payment is verified
+  const isPaymentValid = paymentVerified || (paymentVerificationResult?.success && paymentVerificationResult?.isValid)
 
   return (
     <div className="fade-in">
       <div className="text-center mb-8">
         <h2 className="text-section-title mb-3">Exam Results</h2>
-        <p className="text-body">Your exam results are ready for review and download</p>
+        <p className="text-body">Your exam results are ready for review</p>
       </div>
+
+      {/* Payment Verification Status */}
+      {!paymentVerified && (
+        <div className="mb-8">
+          {isVerifyingPayment ? (
+            <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200">
+              <div className="flex items-center space-x-4">
+                <div className="loading-spinner"></div>
+                <div>
+                  <h3 className="font-semibold text-blue-900 mb-1">Verifying Payment Status</h3>
+                  <p className="text-blue-800 text-sm">Please wait while we verify your payment...</p>
+                </div>
+              </div>
+            </div>
+          ) : paymentVerificationResult ? (
+            <div className={`p-6 rounded-2xl border ${
+              isPaymentValid 
+                ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200' 
+                : 'bg-gradient-to-r from-red-50 to-orange-50 border-red-200'
+            }`}>
+              <div className="flex items-start space-x-4">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                  isPaymentValid ? 'bg-green-100' : 'bg-red-100'
+                }`}>
+                  {isPaymentValid ? (
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                  ) : (
+                    <AlertCircle className="h-5 w-5 text-red-600" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <h3 className={`font-semibold mb-2 ${
+                    isPaymentValid ? 'text-green-900' : 'text-red-900'
+                  }`}>
+                    {isPaymentValid ? 'Payment Verified' : 'Payment Not Verified'}
+                  </h3>
+                  <p className={`text-sm mb-3 ${
+                    isPaymentValid ? 'text-green-800' : 'text-red-800'
+                  }`}>
+                    {paymentVerificationResult.message}
+                  </p>
+                  {!isPaymentValid && (
+                    <button
+                      onClick={handleManualPaymentVerification}
+                      disabled={isVerifyingPayment}
+                      className="btn-primary text-sm"
+                    >
+                      Retry Verification
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* Student Information */}
       <div className="grid-responsive-2 mb-8">
@@ -233,23 +345,34 @@ export default function ResultsDisplay({ studentData, examNumber, onStartOver }:
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-4 mb-8">
-        <button
-          onClick={handleDownload}
-          disabled={isDownloading}
-          className="btn-success flex-1"
-        >
-          {isDownloading ? (
-            <>
-              <div className="loading-spinner" />
-              Generating PDF...
-            </>
-          ) : (
-            <>
-              <Download className="h-5 w-5" />
-              Download PDF Results
-            </>
-          )}
-        </button>
+        {isPaymentValid ? (
+          <button
+            onClick={handleDownload}
+            disabled={isDownloading}
+            className="btn-success flex-1"
+          >
+            {isDownloading ? (
+              <>
+                <div className="loading-spinner" />
+                Generating PDF...
+              </>
+            ) : (
+              <>
+                <Download className="h-5 w-5" />
+                Download PDF Results
+              </>
+            )}
+          </button>
+        ) : (
+          <div className="flex-1 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200">
+            <div className="flex items-center justify-center space-x-3">
+              <AlertCircle className="h-5 w-5 text-gray-500" />
+              <span className="text-gray-600 font-medium">
+                Payment verification required to download results
+              </span>
+            </div>
+          </div>
+        )}
         
         <button
           onClick={onStartOver}
@@ -261,37 +384,39 @@ export default function ResultsDisplay({ studentData, examNumber, onStartOver }:
       </div>
 
       {/* Success Message */}
-      <div className="p-6 bg-gradient-to-r from-emerald-50 to-emerald-100 rounded-2xl border border-emerald-200">
-        <div className="flex items-start space-x-4">
-          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
-            <CheckCircle className="h-5 w-5 text-emerald-600" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-emerald-900 mb-2">Results Successfully Retrieved</h3>
-            <p className="text-emerald-800 text-sm leading-relaxed mb-3">
-              Your exam results have been successfully retrieved and are displayed above. 
-              You can download a PDF copy for your records.
-            </p>
-            <div className="flex items-center gap-4 text-sm text-emerald-700">
-              <div className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" />
-                <span>Retrieved Today</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Award className="h-4 w-4" />
-                <span>{totalSubjects} Subjects</span>
+      {isPaymentValid && (
+        <div className="p-6 bg-gradient-to-r from-emerald-50 to-emerald-100 rounded-2xl border border-emerald-200">
+          <div className="flex items-start space-x-4">
+            <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <CheckCircle className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-emerald-900 mb-2">Results Successfully Retrieved</h3>
+              <p className="text-emerald-800 text-sm leading-relaxed mb-3">
+                Your exam results have been successfully retrieved and are displayed above. 
+                You can download a PDF copy for your records.
+              </p>
+              <div className="flex items-center gap-4 text-sm text-emerald-700">
+                <div className="flex items-center gap-1">
+                  <Calendar className="h-4 w-4" />
+                  <span>Retrieved Today</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Award className="h-4 w-4" />
+                  <span>{totalSubjects} Subjects</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Additional Information */}
       <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200">
         <h3 className="font-semibold text-blue-900 mb-4">Important Information</h3>
         <div className="text-sm text-blue-800 space-y-2">
           <p>• These results are official and have been verified</p>
-          <p>• Keep a copy of your PDF results for future reference</p>
+          <p>• {isPaymentValid ? 'Keep a copy of your PDF results for future reference' : 'Complete payment verification to download PDF results'}</p>
           <p>• Contact your institution for any questions about specific grades</p>
           <p>• Results are confidential and should not be shared without authorization</p>
         </div>
