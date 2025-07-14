@@ -65,6 +65,7 @@ export interface PaymentVerificationResult {
   isValid: boolean
   hasValidPayment: boolean
   paymentRecord?: PaymentRecord
+  studentResult?: StudentResult
   message: string
 }
 

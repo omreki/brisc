@@ -13,7 +13,10 @@ export async function POST(request: NextRequest) {
     if (!examNumber && !paymentId) {
       return NextResponse.json({
         success: false,
-        message: 'Either exam number or payment ID is required'
+        isValid: false,
+        hasValidPayment: false,
+        message: 'Either exam number or payment ID is required',
+        verificationSource: 'input_validation'
       }, { status: 400 })
     }
 
@@ -30,34 +33,57 @@ export async function POST(request: NextRequest) {
       console.log('No valid token provided for payment verification')
     }
 
-    let verificationResult: PaymentVerificationResult
-
-    if (paymentId) {
-      // Verify specific payment by ID
-      verificationResult = await verifySpecificPayment(paymentId, userId)
-    } else {
-      // Verify payment for exam access
-      verificationResult = await googleSheetsService.verifyPaymentForExamAccess(examNumber, userId)
+    let verificationResult: PaymentVerificationResult & { 
+      verificationSource?: string
+      providerStatus?: string
+      providerVerified?: boolean 
     }
 
-    // If verification failed and forceRefresh is requested, attempt reconciliation
-    if (!verificationResult.isValid && forceRefresh) {
-      console.log('Verification failed, attempting payment reconciliation...')
+    // Always force provider verification when forceRefresh is true
+    if (forceRefresh) {
+      console.log('Force refresh requested - verifying directly with provider')
       
       if (paymentId) {
-        // Try to reconcile specific payment
-        await reconcilePaymentById(paymentId)
+        verificationResult = await verifyWithProviderByPaymentId(paymentId, userId)
+      } else {
+        verificationResult = await verifyWithProviderByExamNumber(examNumber, userId)
+      }
+    } else {
+      // Standard verification (database first, then provider if needed)
+      if (paymentId) {
         verificationResult = await verifySpecificPayment(paymentId, userId)
-      } else if (examNumber) {
-        // Try to reconcile all payments for this exam number
-        await reconcilePaymentsByExamNumber(examNumber)
-        verificationResult = await googleSheetsService.verifyPaymentForExamAccess(examNumber, userId)
+      } else {
+        verificationResult = await googleSheetsService.verifyPaymentForExamAccess(examNumber!, userId)
+      }
+
+      // If verification failed, attempt reconciliation with provider
+      if (!verificationResult.isValid) {
+        console.log('Database verification failed, checking with provider...')
+        
+        if (paymentId) {
+          await reconcilePaymentById(paymentId)
+          verificationResult = await verifySpecificPayment(paymentId, userId)
+        } else if (examNumber) {
+          await reconcilePaymentsByExamNumber(examNumber)
+          verificationResult = await googleSheetsService.verifyPaymentForExamAccess(examNumber, userId)
+        }
       }
     }
-    
+
+    // Enhanced response with clear verification details
     return NextResponse.json({
       success: verificationResult.isValid,
-      ...verificationResult
+      isValid: verificationResult.isValid,
+      hasValidPayment: verificationResult.hasValidPayment,
+      message: verificationResult.message || (verificationResult.isValid 
+        ? 'Payment verified successfully with provider' 
+        : 'No valid payment found with provider'),
+      paymentRecord: verificationResult.paymentRecord,
+      studentResult: verificationResult.studentResult,
+      verificationSource: verificationResult.verificationSource || 'database',
+      providerStatus: verificationResult.providerStatus,
+      providerVerified: verificationResult.providerVerified,
+      timestamp: new Date().toISOString()
     })
 
   } catch (error) {
@@ -66,7 +92,9 @@ export async function POST(request: NextRequest) {
       success: false,
       isValid: false,
       hasValidPayment: false,
-      message: 'Internal server error during payment verification'
+      message: 'Internal server error during payment verification',
+      verificationSource: 'error',
+      timestamp: new Date().toISOString()
     }, { status: 500 })
   }
 }
@@ -135,6 +163,184 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// New function to verify directly with provider by payment ID
+async function verifyWithProviderByPaymentId(paymentId: string, userId?: string): Promise<PaymentVerificationResult & { 
+  verificationSource?: string
+  providerStatus?: string
+  providerVerified?: boolean 
+}> {
+  try {
+    console.log(`Verifying payment ${paymentId} directly with IntaSend provider`)
+    
+    // Check with IntaSend API directly
+    const providerResult = await intasendService.checkPaymentStatus(paymentId)
+    
+    if (!providerResult.success) {
+      return {
+        isValid: false,
+        hasValidPayment: false,
+        message: `Provider verification failed: ${providerResult.message}`,
+        verificationSource: 'provider_error',
+        providerStatus: 'unknown',
+        providerVerified: false
+      }
+    }
+
+    const isCompleted = providerResult.status === 'completed'
+    
+    // Update our database with the latest status from provider
+    if (providerResult.data) {
+      const paymentRecord = await googleSheetsService.getPaymentByPaymentId(paymentId)
+      if (paymentRecord && paymentRecord.status !== providerResult.status) {
+        await googleSheetsService.updatePaymentStatus(
+          paymentId,
+          providerResult.status as any,
+          isCompleted ? new Date().toISOString() : undefined,
+          providerResult.status === 'failed' ? providerResult.data?.failed_reason : undefined,
+          providerResult.data
+        )
+      }
+    }
+
+    if (isCompleted) {
+      // Get payment record and exam info
+      const paymentRecord = await googleSheetsService.getPaymentByPaymentId(paymentId)
+      if (!paymentRecord) {
+        return {
+          isValid: false,
+          hasValidPayment: false,
+          message: 'Payment completed with provider but not found in database',
+          verificationSource: 'provider_success_db_missing',
+          providerStatus: providerResult.status,
+          providerVerified: true
+        }
+      }
+
+      // Get student result
+      const studentResult = await googleSheetsService.getStudentResult(paymentRecord.examNumber)
+      
+      return {
+        isValid: true,
+        hasValidPayment: true,
+        message: 'Payment verified successfully with IntaSend provider',
+        paymentRecord,
+        studentResult,
+        verificationSource: 'provider_direct',
+        providerStatus: providerResult.status,
+        providerVerified: true
+      }
+    } else {
+      return {
+        isValid: false,
+        hasValidPayment: false,
+        message: `Payment status with provider: ${providerResult.status}`,
+        verificationSource: 'provider_direct',
+        providerStatus: providerResult.status,
+        providerVerified: true
+      }
+    }
+
+  } catch (error) {
+    console.error(`Error verifying payment ${paymentId} with provider:`, error)
+    return {
+      isValid: false,
+      hasValidPayment: false,
+      message: 'Error communicating with payment provider',
+      verificationSource: 'provider_error',
+      providerStatus: 'error',
+      providerVerified: false
+    }
+  }
+}
+
+// New function to verify directly with provider by exam number
+async function verifyWithProviderByExamNumber(examNumber: string, userId?: string): Promise<PaymentVerificationResult & { 
+  verificationSource?: string
+  providerStatus?: string
+  providerVerified?: boolean 
+}> {
+  try {
+    console.log(`Verifying payments for exam ${examNumber} directly with IntaSend provider`)
+    
+    // Get all payments for this exam number
+    const payments = await googleSheetsService.getPaymentsByExamNumber(examNumber)
+    
+    if (payments.length === 0) {
+      return {
+        isValid: false,
+        hasValidPayment: false,
+        message: 'No payment records found for this exam number',
+        verificationSource: 'no_payments',
+        providerStatus: 'no_records',
+        providerVerified: true
+      }
+    }
+
+    // Check each payment with provider
+    for (const payment of payments) {
+      const providerResult = await intasendService.checkPaymentStatus(payment.paymentId)
+      
+      if (providerResult.success && providerResult.status === 'completed') {
+        // Update status in database if different
+        if (payment.status !== 'completed') {
+          await googleSheetsService.updatePaymentStatus(
+            payment.paymentId,
+            'completed',
+            new Date().toISOString(),
+            undefined,
+            providerResult.data
+          )
+        }
+
+        // Get student result
+        const studentResult = await googleSheetsService.getStudentResult(examNumber)
+        
+        return {
+          isValid: true,
+          hasValidPayment: true,
+          message: 'Payment verified successfully with IntaSend provider',
+          paymentRecord: { ...payment, status: 'completed' },
+          studentResult,
+          verificationSource: 'provider_direct',
+          providerStatus: providerResult.status,
+          providerVerified: true
+        }
+      } else if (providerResult.success) {
+        // Update status if different
+        if (payment.status !== providerResult.status) {
+          await googleSheetsService.updatePaymentStatus(
+            payment.paymentId,
+            providerResult.status as any,
+            undefined,
+            providerResult.status === 'failed' ? providerResult.data?.failed_reason : undefined,
+            providerResult.data
+          )
+        }
+      }
+    }
+
+    return {
+      isValid: false,
+      hasValidPayment: false,
+      message: 'No completed payments found with provider for this exam number',
+      verificationSource: 'provider_direct',
+      providerStatus: 'none_completed',
+      providerVerified: true
+    }
+
+  } catch (error) {
+    console.error(`Error verifying payments for exam ${examNumber} with provider:`, error)
+    return {
+      isValid: false,
+      hasValidPayment: false,
+      message: 'Error communicating with payment provider',
+      verificationSource: 'provider_error',
+      providerStatus: 'error',
+      providerVerified: false
+    }
+  }
+}
+
 async function verifySpecificPayment(paymentId: string, userId?: string): Promise<PaymentVerificationResult> {
   try {
     const paymentRecord = await googleSheetsService.getPaymentByPaymentId(paymentId)
@@ -151,34 +357,37 @@ async function verifySpecificPayment(paymentId: string, userId?: string): Promis
       return {
         isValid: false,
         hasValidPayment: false,
-        paymentRecord,
-        message: getPaymentStatusMessage(paymentRecord.status, paymentRecord.failureReason)
+        message: getPaymentStatusMessage(paymentRecord.status, paymentRecord.failureReason),
+        paymentRecord
       }
     }
 
-    // If userId is provided, verify it matches the payment
-    if (userId && paymentRecord.userId && paymentRecord.userId !== userId) {
+    // Get the student result
+    const studentResult = await googleSheetsService.getStudentResult(paymentRecord.examNumber)
+    
+    if (!studentResult) {
       return {
         isValid: false,
         hasValidPayment: true,
-        paymentRecord,
-        message: 'Payment found but belongs to a different user account'
+        message: 'Payment completed but exam results not found',
+        paymentRecord
       }
     }
 
     return {
       isValid: true,
       hasValidPayment: true,
+      message: 'Payment verified successfully',
       paymentRecord,
-      message: 'Payment verified successfully'
+      studentResult
     }
 
   } catch (error) {
-    console.error('Error verifying specific payment:', error)
+    console.error(`Error verifying specific payment ${paymentId}:`, error)
     return {
       isValid: false,
       hasValidPayment: false,
-      message: 'Error verifying payment. Please try again.'
+      message: 'Error during payment verification'
     }
   }
 }
