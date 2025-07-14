@@ -1,72 +1,29 @@
 'use client'
 
-import { useState } from 'react'
-import { Download, FileText, RefreshCw, User, Calendar } from 'lucide-react'
 import { StudentResult } from '@/types/student'
-import { generatePDF } from '@/utils/pdfGenerator'
+import { Download, FileText, User, Hash, Calendar } from 'lucide-react'
 import { format } from 'date-fns'
+import { toast } from 'react-hot-toast'
 
 interface ResultsDisplayProps {
   studentData: StudentResult
   examNumber: string
-  onStartOver: () => void
 }
 
-export default function ResultsDisplay({ 
-  studentData, 
-  examNumber, 
-  onStartOver 
-}: ResultsDisplayProps) {
-  const [isDownloading, setIsDownloading] = useState(false)
-
+export default function ResultsDisplay({ studentData, examNumber }: ResultsDisplayProps) {
   const handleDownloadPDF = async () => {
-    setIsDownloading(true)
     try {
+      // Dynamic import to ensure PDF generation only happens client-side
+      const { generatePDF } = await import('@/utils/pdfGenerator')
       await generatePDF(studentData, examNumber)
+      toast.success('PDF generated successfully!')
     } catch (error) {
       console.error('Error generating PDF:', error)
-    } finally {
-      setIsDownloading(false)
+      toast.error('Failed to generate PDF. Please try again.')
     }
   }
 
-  const examSubjects = [
-    { label: 'Old Testament Survey', key: 'oldTestamentSurvey' },
-    { label: 'New Testament Survey', key: 'newTestamentSurvey' },
-    { label: 'Prophets', key: 'prophets' },
-    { label: 'Pauls Missionary Journey', key: 'paulsMissionaryJourney' },
-    { label: 'Hebrew Language', key: 'hebrewLanguage' },
-    { label: 'Book of Hebrew', key: 'bookOfHebrew' },
-    { label: 'Greek Language', key: 'greekLanguage' },
-    { label: 'Bible Study Method', key: 'bibleStudyMethod' },
-    { label: 'Book of Romans', key: 'bookOfRomans' },
-    { label: 'The Book of Judges', key: 'theBookOfJudges' },
-    { label: 'Abrahams Journey', key: 'abrahamsJourney' },
-    { label: 'Kings of Israel', key: 'kingsOfIsrael' },
-    { label: 'Kings of Judah', key: 'kingsOfJudah' },
-    { label: 'Epistles', key: 'epistles' },
-    { label: 'Church History', key: 'churchHistory' },
-    { label: 'Theology', key: 'theology' },
-    { label: 'Tabernacle', key: 'tabernacle' },
-    { label: 'The Book of Ezekiel', key: 'theBookOfEzekiel' },
-    { label: 'The Journey of Israelites', key: 'theJourneyOfIsraelites' },
-    { label: 'Church Administration', key: 'churchAdministration' },
-    { label: 'Practicum', key: 'practicum' },
-    { label: 'REF', key: 'ref' },
-  ]
-
-  const getGradeColor = (grade: string) => {
-    const numericGrade = parseFloat(grade)
-    if (isNaN(numericGrade)) return 'text-gray-600'
-    
-    if (numericGrade >= 80) return 'text-green-600'
-    if (numericGrade >= 70) return 'text-blue-600'
-    if (numericGrade >= 60) return 'text-yellow-600'
-    if (numericGrade >= 50) return 'text-orange-600'
-    return 'text-red-600'
-  }
-
-  const getGradeLetter = (grade: string) => {
+  const getGradeLetter = (grade: string): string => {
     const numericGrade = parseFloat(grade)
     if (isNaN(numericGrade)) return grade
     
@@ -77,102 +34,133 @@ export default function ResultsDisplay({
     return 'F'
   }
 
+  const getGradeColor = (grade: string): string => {
+    const letter = getGradeLetter(grade)
+    switch (letter) {
+      case 'A': return 'text-green-600'
+      case 'B': return 'text-blue-600'
+      case 'C': return 'text-yellow-600'
+      case 'D': return 'text-orange-600'
+      case 'F': return 'text-red-600'
+      default: return 'text-gray-600'
+    }
+  }
+
+  const subjects = [
+    { name: 'Old Testament Survey', grade: studentData.oldTestamentSurvey },
+    { name: 'New Testament Survey', grade: studentData.newTestamentSurvey },
+    { name: 'Prophets', grade: studentData.prophets },
+    { name: 'Pauls Missionary Journey', grade: studentData.paulsMissionaryJourney },
+    { name: 'Hebrew Language', grade: studentData.hebrewLanguage },
+    { name: 'Book of Hebrew', grade: studentData.bookOfHebrew },
+    { name: 'Greek Language', grade: studentData.greekLanguage },
+    { name: 'Bible Study Method', grade: studentData.bibleStudyMethod },
+    { name: 'Book of Romans', grade: studentData.bookOfRomans },
+    { name: 'The Book of Judges', grade: studentData.theBookOfJudges },
+    { name: 'Abrahams Journey', grade: studentData.abrahamsJourney },
+    { name: 'Kings of Israel', grade: studentData.kingsOfIsrael },
+    { name: 'Kings of Judah', grade: studentData.kingsOfJudah },
+    { name: 'Epistles', grade: studentData.epistles },
+    { name: 'Church History', grade: studentData.churchHistory },
+    { name: 'Theology', grade: studentData.theology },
+    { name: 'Tabernacle', grade: studentData.tabernacle },
+    { name: 'The Book of Ezekiel', grade: studentData.theBookOfEzekiel },
+    { name: 'The Journey of Israelites', grade: studentData.theJourneyOfIsraelites },
+    { name: 'Church Administration', grade: studentData.churchAdministration },
+    { name: 'Practicum', grade: studentData.practicum },
+    { name: 'REF', grade: studentData.ref },
+  ]
+
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">
-          Exam Results
-        </h2>
-        <p className="text-gray-600">
-          Your examination results are displayed below
-        </p>
-      </div>
-
-      {/* Student Header */}
-      <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg p-6 mb-6">
+    <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
+      {/* Header */}
+      <div className="border-b border-gray-200 pb-6 mb-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-              <User size={32} />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold">{studentData.name}</h3>
-              <p className="text-blue-100">Exam Number: {examNumber}</p>
-            </div>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+              <FileText className="text-blue-600" />
+              Student Examination Results
+            </h1>
+            <p className="text-gray-600 mt-2">Detailed academic performance report</p>
           </div>
-          <div className="text-right">
-            <div className="flex items-center space-x-2 text-blue-100">
-              <Calendar size={16} />
-              <span>Generated: {format(new Date(), 'MMM dd, yyyy')}</span>
-            </div>
+          <button
+            onClick={handleDownloadPDF}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Download size={20} />
+            Download PDF
+          </button>
+        </div>
+      </div>
+
+      {/* Student Information */}
+      <div className="grid md:grid-cols-3 gap-6 mb-8">
+        <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
+          <User className="text-blue-600" size={24} />
+          <div>
+            <p className="text-sm text-gray-600">Student Name</p>
+            <p className="font-semibold text-gray-900">{studentData.name}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
+          <Hash className="text-blue-600" size={24} />
+          <div>
+            <p className="text-sm text-gray-600">Exam Number</p>
+            <p className="font-semibold text-gray-900">{examNumber}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
+          <Calendar className="text-blue-600" size={24} />
+          <div>
+            <p className="text-sm text-gray-600">Generated</p>
+            <p className="font-semibold text-gray-900">{format(new Date(), 'MMM dd, yyyy')}</p>
           </div>
         </div>
       </div>
 
-      {/* Results Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        {examSubjects.map((subject) => {
-          const grade = studentData[subject.key as keyof StudentResult] as string
-          return (
-            <div key={subject.key} className="bg-white rounded-lg shadow-sm border p-4">
-              <h4 className="font-medium text-gray-800 mb-2 text-sm">
-                {subject.label}
-              </h4>
-              <div className="flex items-center justify-between">
-                <span className={`text-2xl font-bold ${getGradeColor(grade)}`}>
-                  {grade}
-                </span>
-                <span className={`text-sm font-medium px-2 py-1 rounded ${getGradeColor(grade)} bg-opacity-10`}>
-                  {getGradeLetter(grade)}
-                </span>
-              </div>
-            </div>
-          )
-        })}
+      {/* Results Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse border border-gray-300">
+          <thead>
+            <tr className="bg-blue-600 text-white">
+              <th className="border border-gray-300 px-4 py-3 text-left font-semibold">Subject</th>
+              <th className="border border-gray-300 px-4 py-3 text-center font-semibold">Grade</th>
+              <th className="border border-gray-300 px-4 py-3 text-center font-semibold">Letter Grade</th>
+            </tr>
+          </thead>
+          <tbody>
+            {subjects.map((subject, index) => (
+              <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                <td className="border border-gray-300 px-4 py-3 font-medium">{subject.name}</td>
+                <td className="border border-gray-300 px-4 py-3 text-center font-semibold">
+                  {subject.grade}
+                </td>
+                <td className={`border border-gray-300 px-4 py-3 text-center font-bold ${getGradeColor(subject.grade)}`}>
+                  {getGradeLetter(subject.grade)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* Actions */}
-      <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        <button
-          onClick={handleDownloadPDF}
-          disabled={isDownloading}
-          className="btn-primary flex items-center justify-center space-x-2"
-        >
-          {isDownloading ? (
-            <>
-              <div className="loading-spinner" />
-              <span>Generating PDF...</span>
-            </>
-          ) : (
-            <>
-              <Download size={20} />
-              <span>Download PDF</span>
-            </>
-          )}
-        </button>
-        
-        <button
-          onClick={onStartOver}
-          className="btn-secondary flex items-center justify-center space-x-2"
-        >
-          <RefreshCw size={20} />
-          <span>Search Another</span>
-        </button>
+      {/* Grade Scale */}
+      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+        <h3 className="font-semibold text-gray-900 mb-2">Grade Scale:</h3>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <span className="text-green-600 font-medium">A: 80-100</span>
+          <span className="text-blue-600 font-medium">B: 70-79</span>
+          <span className="text-yellow-600 font-medium">C: 60-69</span>
+          <span className="text-orange-600 font-medium">D: 50-59</span>
+          <span className="text-red-600 font-medium">F: Below 50</span>
+        </div>
       </div>
 
-      {/* Footer Info */}
-      <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-        <div className="flex items-center space-x-2 text-gray-600 mb-2">
-          <FileText size={16} />
-          <span className="font-medium">Grade Scale:</span>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
-          <div className="text-green-600">A: 80-100</div>
-          <div className="text-blue-600">B: 70-79</div>
-          <div className="text-yellow-600">C: 60-69</div>
-          <div className="text-orange-600">D: 50-59</div>
-          <div className="text-red-600">F: Below 50</div>
-        </div>
+      {/* Footer */}
+      <div className="mt-6 pt-6 border-t border-gray-200">
+        <p className="text-sm text-gray-500 text-center">
+          This document is computer generated and does not require a signature.
+        </p>
       </div>
     </div>
   )

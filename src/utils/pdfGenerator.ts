@@ -1,9 +1,13 @@
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import { StudentResult } from '@/types/student'
 import { format } from 'date-fns'
 
 export async function generatePDF(studentData: StudentResult, examNumber: string) {
+  // Dynamic imports to avoid server-side bundling
+  const [{ default: jsPDF }, autoTable] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable')
+  ])
+
   const doc = new jsPDF()
   
   // Header
