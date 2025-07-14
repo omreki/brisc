@@ -24,6 +24,7 @@ export default function PaymentForm({
   const [paymentProgress, setPaymentProgress] = useState('')
   const [showManualVerification, setShowManualVerification] = useState(false)
   const [isPolling, setIsPolling] = useState(false)
+  const [paymentInitiated, setPaymentInitiated] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -43,6 +44,7 @@ export default function PaymentForm({
     setIsLoading(true)
     setPaymentProgress('Initiating payment...')
     setShowManualVerification(false)
+    setPaymentInitiated(false)
     
     try {
       const paymentData: PaymentData = {
@@ -66,6 +68,7 @@ export default function PaymentForm({
       if (data.success) {
         toast.success('Payment initiated! Check your phone for M-Pesa prompt.')
         setPaymentProgress('Payment initiated. Check your phone for M-Pesa prompt...')
+        setPaymentInitiated(true)
         
         // Start polling and show manual verification after 10 seconds
         setIsPolling(true)
@@ -95,6 +98,7 @@ export default function PaymentForm({
   const handleManualConfirmation = (confirmed: boolean) => {
     setIsPolling(false)
     setShowManualVerification(false)
+    setPaymentInitiated(false)
     
     if (confirmed) {
       toast.success('Payment confirmed manually. Loading results...')
@@ -137,6 +141,7 @@ export default function PaymentForm({
           if (statusData.status === 'completed') {
             setIsPolling(false)
             setShowManualVerification(false)
+            setPaymentInitiated(false)
             toast.success(`Payment confirmed! (via ${dataSource})`)
             setPaymentProgress('Payment confirmed! Loading results...')
             onPaymentSuccess()
@@ -144,6 +149,7 @@ export default function PaymentForm({
           } else if (statusData.status === 'failed') {
             setIsPolling(false)
             setShowManualVerification(false)
+            setPaymentInitiated(false)
             toast.error('Payment failed. Please try again.')
             setPaymentProgress('')
             return
@@ -154,6 +160,7 @@ export default function PaymentForm({
         if (pollAttempts >= maxAttempts) {
           setIsPolling(false)
           setShowManualVerification(true)
+          setPaymentInitiated(false)
           setPaymentProgress('Payment verification timeout. Please confirm manually.')
           return
         }
@@ -318,6 +325,36 @@ export default function PaymentForm({
           </div>
         )}
 
+        {/* Immediate Manual Verification - Available right after payment initiation */}
+        {paymentInitiated && isPolling && (
+          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center space-x-2 mb-3">
+              <CheckCircle className="text-green-600" size={20} />
+              <h3 className="font-medium text-green-800">Quick Payment Confirmation</h3>
+            </div>
+            <p className="text-sm text-green-700 mb-4">
+              Have you completed the M-Pesa payment? You can confirm manually instead of waiting for automatic verification:
+            </p>
+            <div className="flex space-x-3">
+              <button
+                type="button"
+                onClick={() => handleManualConfirmation(true)}
+                className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center space-x-2"
+              >
+                <CheckCircle size={16} />
+                <span>Yes, I completed payment</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleManualConfirmation(false)}
+                className="flex-1 bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+              >
+                Cancel & try again
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Manual Verification Section */}
         {showManualVerification && (
           <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -355,9 +392,9 @@ export default function PaymentForm({
           <li>1. Click "Pay KSh 150" button</li>
           <li>2. Check your phone for M-Pesa prompt</li>
           <li>3. Enter your M-Pesa PIN</li>
-          <li>4. Wait for payment confirmation</li>
-          <li>5. Your results will be displayed automatically</li>
-          <li>6. If automatic verification fails, you can confirm manually after 10 seconds</li>
+          <li>4. You can confirm payment immediately after completing it</li>
+          <li>5. Or wait for automatic verification (up to 3 minutes)</li>
+          <li>6. Your results will be displayed after confirmation</li>
         </ol>
       </div>
     </div>
