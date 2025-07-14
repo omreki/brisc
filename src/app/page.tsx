@@ -18,6 +18,7 @@ export default function Home() {
   const [studentData, setStudentData] = useState<StudentResult | null>(null)
   const [examNumber, setExamNumber] = useState('')
   const [paymentData, setPaymentData] = useState<{paymentId: string; userEmail: string} | null>(null)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
 
   // Auto-redirect to dashboard when user becomes authenticated
   useEffect(() => {
@@ -85,17 +86,49 @@ export default function Home() {
     setStep('payment')
   }
 
-  const handlePaymentSuccess = (paymentInfo?: {paymentId: string; userEmail: string}) => {
+  const handlePaymentSuccess = async (paymentInfo?: {paymentId: string; userEmail: string}) => {
+    setIsProcessingPayment(true)
+    
     if (paymentInfo) {
       setPaymentData(paymentInfo)
     }
-    setStep('results')
+    
+    // Fetch actual student results after successful payment
+    try {
+      const response = await fetch('/api/lookup-exam', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ examNumber }),
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.data) {
+        // Update with actual student results data
+        setStudentData(data.data)
+        setStep('results')
+      } else {
+        // Fallback: show results even if lookup fails (payment was successful)
+        console.warn('Failed to fetch updated student data after payment:', data.message)
+        setStep('results')
+      }
+    } catch (error) {
+      console.error('Error fetching student data after payment:', error)
+      // Fallback: show results even if lookup fails (payment was successful)
+      setStep('results')
+    } finally {
+      setIsProcessingPayment(false)
+    }
   }
 
   const handleStartOver = () => {
     setStep('lookup')
     setStudentData(null)
     setExamNumber('')
+    setPaymentData(null)
+    setIsProcessingPayment(false)
   }
 
   // Show loading state while checking authentication
@@ -238,14 +271,22 @@ export default function Home() {
           {/* Main Content */}
           <div className="card-elevated slide-up">
             <div className="card-body">
-              {step === 'lookup' && (
+              {isProcessingPayment && (
+                <div className="text-center py-12">
+                  <div className="loading-spinner mx-auto mb-6 w-12 h-12"></div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Processing Payment</h3>
+                  <p className="text-gray-600">Fetching your exam results...</p>
+                </div>
+              )}
+              
+              {!isProcessingPayment && step === 'lookup' && (
                 <ExamLookup 
                   onExamFound={handleExamFound}
                   onPaymentRequired={handlePaymentRequired}
                 />
               )}
               
-              {step === 'payment' && studentData && (
+              {!isProcessingPayment && step === 'payment' && studentData && (
                 <PaymentForm
                   studentData={studentData}
                   examNumber={examNumber}
@@ -254,7 +295,7 @@ export default function Home() {
                 />
               )}
               
-              {step === 'results' && studentData && (
+              {!isProcessingPayment && step === 'results' && studentData && (
                 <ResultsDisplay
                   studentData={studentData}
                   examNumber={examNumber}

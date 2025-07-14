@@ -101,16 +101,27 @@ export default function PaymentForm({
     }
   }
 
-  const handleManualConfirmation = (confirmed: boolean) => {
+  const handleManualConfirmation = async (confirmed: boolean) => {
     setIsPolling(false)
     setShowManualVerification(false)
     
     if (confirmed) {
+      setIsLoading(true)
       toast.success('Payment confirmed! Processing your results...')
+      setPaymentProgress('Fetching your exam results...')
+      
       const paymentInfo = currentPaymentId && email 
         ? { paymentId: currentPaymentId, userEmail: email }
         : undefined
-      onPaymentSuccess(paymentInfo)
+      
+      try {
+        await onPaymentSuccess(paymentInfo)
+      } catch (error) {
+        console.error('Error during manual confirmation:', error)
+        toast.error('Error loading results. Please try again.')
+        setPaymentProgress('')
+        setIsLoading(false)
+      }
     } else {
       setPaymentProgress('')
       setPaymentInitiated(false)
@@ -150,8 +161,9 @@ export default function PaymentForm({
             ? { paymentId: currentPaymentId, userEmail: email }
             : undefined
           
-          setTimeout(() => {
-            onPaymentSuccess(paymentInfo)
+          setTimeout(async () => {
+            setPaymentProgress('Fetching your exam results...')
+            await onPaymentSuccess(paymentInfo)
           }, 1000)
         } else if (result.status === 'failed') {
           setPaymentProgress('')
@@ -233,8 +245,9 @@ export default function PaymentForm({
               : undefined
             
             // Redirect to results immediately
-            setTimeout(() => {
-              onPaymentSuccess(paymentInfo)
+            setTimeout(async () => {
+              setPaymentProgress('Fetching your exam results...')
+              await onPaymentSuccess(paymentInfo)
             }, 1000)
             return
           } else if (result.status === 'failed') {
