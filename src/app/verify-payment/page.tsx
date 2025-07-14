@@ -238,7 +238,7 @@ export default function VerifyPaymentPage() {
               <div>
                 <h3 className="font-semibold text-green-900 mb-2">Payment Details</h3>
                 <div className="text-sm text-green-800 space-y-1">
-                  <p>• <strong>Amount:</strong> KES 15 per exam result</p>
+                  <p>• <strong>Amount:</strong> KES 150 per exam result</p>
                   <p>• <strong>Payment Method:</strong> M-Pesa only</p>
                   <p>• <strong>Processing Time:</strong> Usually instant, up to 5 minutes</p>
                   <p>• <strong>Receipt:</strong> Sent via SMS from M-Pesa</p>

@@ -52,7 +52,7 @@ export default function PaymentForm({
     try {
       const paymentData: PaymentData = {
         examNumber,
-        amount: 15,
+        amount: 150,
         currency: 'KES',
         phoneNumber: phoneNumber.trim(),
         email: email.trim() || undefined,
@@ -237,7 +237,7 @@ export default function PaymentForm({
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Payment Required</h2>
           <p className="text-gray-600">
-            Pay <span className="font-semibold text-green-600">KES 15</span> to access your exam results
+            Pay <span className="font-semibold text-green-600">KES 150</span> to access your exam results
           </p>
         </div>
 
@@ -255,7 +255,7 @@ export default function PaymentForm({
             </div>
             <div className="flex justify-between">
               <span className="text-blue-700">Payment Amount:</span>
-              <span className="font-medium text-green-600">KES 15</span>
+              <span className="font-medium text-green-600">KES 150</span>
             </div>
           </div>
         </div>
@@ -313,7 +313,7 @@ export default function PaymentForm({
             ) : (
               <>
                 <DollarSign className="h-5 w-5" />
-                Pay KES 15 via M-Pesa
+                Pay KES 150 via M-Pesa
               </>
             )}
           </button>

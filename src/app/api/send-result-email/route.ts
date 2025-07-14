@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
           userEmail,
           studentName,
           examNumber,
-          15, // Payment amount
+          150, // Payment amount
           paymentId
         )
       } catch (error) {

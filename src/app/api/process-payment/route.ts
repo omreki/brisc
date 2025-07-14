@@ -30,8 +30,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Validate amount (should be 15 KES)
-    if (paymentData.amount !== 15) {
+    // Validate amount (should be 150 KES)
+    if (paymentData.amount !== 150) {
       return NextResponse.json<PaymentResponse>({
         success: false,
         message: 'Invalid payment amount',

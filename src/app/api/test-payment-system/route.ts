@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
           paymentId: paymentId || `test_payment_${Date.now()}`,
           transactionId: `test_txn_${Date.now()}`,
           apiRef: `exam_${examNumber || 'TEST123'}_${Date.now()}`,
-          amount: 15,
+          amount: 150,
           currency: 'KES',
           phoneNumber: '254712345678',
           email: 'test@example.com',
