@@ -1,16 +1,17 @@
 'use client'
 
 import { StudentResult } from '@/types/student'
-import { Download, FileText, User, Hash, Calendar } from 'lucide-react'
+import { Download, FileText, User, Hash, Calendar, RefreshCw } from 'lucide-react'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
 
 interface ResultsDisplayProps {
   studentData: StudentResult
   examNumber: string
+  onStartOver: () => void
 }
 
-export default function ResultsDisplay({ studentData, examNumber }: ResultsDisplayProps) {
+export default function ResultsDisplay({ studentData, examNumber, onStartOver }: ResultsDisplayProps) {
   const handleDownloadPDF = async () => {
     try {
       // Dynamic import to ensure PDF generation only happens client-side
@@ -83,13 +84,22 @@ export default function ResultsDisplay({ studentData, examNumber }: ResultsDispl
             </h1>
             <p className="text-gray-600 mt-2">Detailed academic performance report</p>
           </div>
-          <button
-            onClick={handleDownloadPDF}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Download size={20} />
-            Download PDF
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={handleDownloadPDF}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Download size={20} />
+              Download PDF
+            </button>
+            <button
+              onClick={onStartOver}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              <RefreshCw size={20} />
+              Search Another
+            </button>
+          </div>
         </div>
       </div>
 
