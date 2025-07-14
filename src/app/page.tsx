@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, FileText, CreditCard, Download } from 'lucide-react'
+import { Search, FileText, CreditCard, Download, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react'
 import ExamLookup from '@/components/ExamLookup'
 import PaymentForm from '@/components/PaymentForm'
 import ResultsDisplay from '@/components/ResultsDisplay'
@@ -17,6 +17,7 @@ export default function Home() {
   const [step, setStep] = useState<'lookup' | 'payment' | 'results'>('lookup')
   const [studentData, setStudentData] = useState<StudentResult | null>(null)
   const [examNumber, setExamNumber] = useState('')
+  const [paymentData, setPaymentData] = useState<{paymentId: string; userEmail: string} | null>(null)
 
   // Auto-redirect to dashboard when user becomes authenticated
   useEffect(() => {
@@ -26,8 +27,6 @@ export default function Home() {
   }, [isAuthenticated])
 
   const handleAuthSuccess = () => {
-    // Authentication success is handled by the AuthContext
-    // This just ensures we're on the dashboard view
     setCurrentView('dashboard')
   }
 
@@ -50,10 +49,46 @@ export default function Home() {
   const handleExamFound = (data: StudentResult, examNum: string) => {
     setStudentData(data)
     setExamNumber(examNum)
+    setStep('results') // Skip payment step since payment has been verified
+  }
+
+  const handlePaymentRequired = (examNum: string, message: string) => {
+    const dummyStudentData: StudentResult = {
+      examNumber: examNum,
+      name: `Student ${examNum}`,
+      oldTestamentSurvey: '',
+      newTestamentSurvey: '',
+      prophets: '',
+      paulsMissionaryJourney: '',
+      hebrewLanguage: '',
+      bookOfHebrew: '',
+      greekLanguage: '',
+      bibleStudyMethod: '',
+      bookOfRomans: '',
+      theBookOfJudges: '',
+      abrahamsJourney: '',
+      kingsOfIsrael: '',
+      kingsOfJudah: '',
+      epistles: '',
+      churchHistory: '',
+      theology: '',
+      tabernacle: '',
+      theBookOfEzekiel: '',
+      theJourneyOfIsraelites: '',
+      churchAdministration: '',
+      practicum: '',
+      ref: ''
+    }
+    
+    setStudentData(dummyStudentData)
+    setExamNumber(examNum)
     setStep('payment')
   }
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = (paymentInfo?: {paymentId: string; userEmail: string}) => {
+    if (paymentInfo) {
+      setPaymentData(paymentInfo)
+    }
     setStep('results')
   }
 
@@ -66,11 +101,11 @@ export default function Home() {
   // Show loading state while checking authentication
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
-          <h2 className="text-xl font-semibold text-gray-700 mb-2">Loading...</h2>
-          <p className="text-gray-500">Please wait while we prepare your session</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center slide-up">
+          <div className="loading-spinner mx-auto mb-8 w-16 h-16"></div>
+          <h2 className="text-subsection-title mb-4">Loading...</h2>
+          <p className="text-body">Please wait while we prepare your session</p>
         </div>
       </div>
     )
@@ -97,84 +132,136 @@ export default function Home() {
   // Show exam portal if authenticated
   return (
     <AuthGuard>
-      <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8">
-        <div className="container mx-auto px-4 max-w-4xl">
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+        <div className="container-modern section-spacing">
           {/* Header */}
-          <div className="text-center mb-8">
-            <div className="flex justify-between items-center mb-4">
+          <div className="text-center mb-12 fade-in">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6 mb-8">
               <button
                 onClick={handleNavigateToDashboard}
-                className="flex items-center text-blue-600 hover:text-blue-500 font-medium transition-colors"
+                className="btn-ghost order-2 sm:order-1"
               >
-                ← Back to Dashboard
+                <ArrowLeft className="h-4 w-4" />
+                Back to Dashboard
               </button>
               <button
                 onClick={handleLogout}
-                className="flex items-center text-red-600 hover:text-red-500 font-medium transition-colors"
+                className="btn-danger order-1 sm:order-2"
               >
                 Logout
               </button>
             </div>
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">
+            <h1 className="text-hero mb-6">
               Exam Portal
             </h1>
-            <p className="text-gray-600">
-              Access your exam results securely
+            <p className="text-body max-w-2xl mx-auto">
+              Access your exam results securely and efficiently through our streamlined portal
             </p>
           </div>
 
           {/* Progress Steps */}
-          <div className="flex justify-center mb-8">
-            <div className="flex items-center space-x-4">
-              <div className={`flex items-center space-x-2 ${step === 'lookup' ? 'text-primary-600' : step === 'payment' || step === 'results' ? 'text-green-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step === 'lookup' ? 'bg-primary-600 text-white' : step === 'payment' || step === 'results' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>
-                  <Search size={16} />
-                </div>
-                <span className="font-medium">Lookup</span>
+          <div className="progress-modern mb-12">
+            <div className="progress-step">
+              <div className={`progress-step-icon ${
+                step === 'lookup' 
+                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white' 
+                  : step === 'payment' || step === 'results' 
+                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white' 
+                    : 'bg-gray-200 text-gray-500'
+              }`}>
+                {step === 'payment' || step === 'results' ? (
+                  <CheckCircle className="h-6 w-6" />
+                ) : (
+                  <Search className="h-6 w-6" />
+                )}
               </div>
-              
-              <div className={`w-8 h-px ${step === 'payment' || step === 'results' ? 'bg-green-600' : 'bg-gray-200'}`}></div>
-              
-              <div className={`flex items-center space-x-2 ${step === 'payment' ? 'text-primary-600' : step === 'results' ? 'text-green-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step === 'payment' ? 'bg-primary-600 text-white' : step === 'results' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>
-                  <CreditCard size={16} />
-                </div>
-                <span className="font-medium">Payment</span>
+              <span className={`progress-step-text ${
+                step === 'lookup' 
+                  ? 'text-blue-600' 
+                  : step === 'payment' || step === 'results' 
+                    ? 'text-emerald-600' 
+                    : 'text-gray-400'
+              }`}>
+                Search
+              </span>
+            </div>
+            
+            <div className={`progress-connector ${
+              step === 'payment' || step === 'results' ? 'bg-emerald-500' : 'bg-gray-200'
+            }`}></div>
+            
+            <div className="progress-step">
+              <div className={`progress-step-icon ${
+                step === 'payment' 
+                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white' 
+                  : step === 'results' 
+                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white' 
+                    : 'bg-gray-200 text-gray-500'
+              }`}>
+                {step === 'results' ? (
+                  <CheckCircle className="h-6 w-6" />
+                ) : (
+                  <CreditCard className="h-6 w-6" />
+                )}
               </div>
-              
-              <div className={`w-8 h-px ${step === 'results' ? 'bg-green-600' : 'bg-gray-200'}`}></div>
-              
-              <div className={`flex items-center space-x-2 ${step === 'results' ? 'text-green-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step === 'results' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>
-                  <FileText size={16} />
-                </div>
-                <span className="font-medium">Results</span>
+              <span className={`progress-step-text ${
+                step === 'payment' 
+                  ? 'text-blue-600' 
+                  : step === 'results' 
+                    ? 'text-emerald-600' 
+                    : 'text-gray-400'
+              }`}>
+                Payment
+              </span>
+            </div>
+            
+            <div className={`progress-connector ${
+              step === 'results' ? 'bg-emerald-500' : 'bg-gray-200'
+            }`}></div>
+            
+            <div className="progress-step">
+              <div className={`progress-step-icon ${
+                step === 'results' 
+                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white' 
+                  : 'bg-gray-200 text-gray-500'
+              }`}>
+                <FileText className="h-6 w-6" />
               </div>
+              <span className={`progress-step-text ${
+                step === 'results' ? 'text-emerald-600' : 'text-gray-400'
+              }`}>
+                Results
+              </span>
             </div>
           </div>
 
           {/* Main Content */}
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            {step === 'lookup' && (
-              <ExamLookup onExamFound={handleExamFound} />
-            )}
-            
-            {step === 'payment' && studentData && (
-              <PaymentForm
-                studentData={studentData}
-                examNumber={examNumber}
-                onPaymentSuccess={handlePaymentSuccess}
-                onBack={() => setStep('lookup')}
-              />
-            )}
-            
-            {step === 'results' && studentData && (
-              <ResultsDisplay
-                studentData={studentData}
-                examNumber={examNumber}
-                onStartOver={handleStartOver}
-              />
-            )}
+          <div className="card-elevated slide-up">
+            <div className="card-body">
+              {step === 'lookup' && (
+                <ExamLookup 
+                  onExamFound={handleExamFound}
+                  onPaymentRequired={handlePaymentRequired}
+                />
+              )}
+              
+              {step === 'payment' && studentData && (
+                <PaymentForm
+                  studentData={studentData}
+                  examNumber={examNumber}
+                  onPaymentSuccess={handlePaymentSuccess}
+                  onBack={() => setStep('lookup')}
+                />
+              )}
+              
+              {step === 'results' && studentData && (
+                <ResultsDisplay
+                  studentData={studentData}
+                  examNumber={examNumber}
+                  onStartOver={handleStartOver}
+                />
+              )}
+            </div>
           </div>
         </div>
       </main>

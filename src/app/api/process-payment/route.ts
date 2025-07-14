@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { intasendService } from '@/services/intasendService'
+import { googleSheetsService } from '@/services/googleSheets'
 import { PaymentData, PaymentResponse } from '@/types/student'
+import jwt from 'jsonwebtoken'
 
 export async function POST(request: NextRequest) {
   try {
     const paymentData: PaymentData = await request.json()
+
+    // Get user ID from token if available (for logged-in users)
+    let userId: string | undefined
+    try {
+      const token = request.cookies.get('auth-token')?.value
+      if (token) {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any
+        userId = decoded.userId
+        console.log('Payment initiated by authenticated user:', userId)
+      }
+    } catch (error) {
+      // Token is optional - anonymous users can still make payments
+      console.log('No valid token provided for payment processing')
+    }
 
     // Validate required fields
     if (!paymentData.examNumber || !paymentData.phoneNumber || !paymentData.amount) {
@@ -14,8 +30,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Validate amount (should be 150 KES)
-    if (paymentData.amount !== 150) {
+    // Validate amount (should be 15 KES)
+    if (paymentData.amount !== 15) {
       return NextResponse.json<PaymentResponse>({
         success: false,
         message: 'Invalid payment amount',
@@ -42,6 +58,32 @@ export async function POST(request: NextRequest) {
         success: false,
         message: paymentResult.message,
       }, { status: 400 })
+    }
+
+    // Record the initial payment in Google Sheets with enhanced information
+    try {
+      const paymentRecord = {
+        userId: userId, // Include user ID for automatic result delivery
+        examNumber: paymentData.examNumber,
+        paymentId: paymentResult.paymentId!,
+        transactionId: paymentResult.transactionId,
+        apiRef: paymentResult.apiRef,
+        amount: paymentData.amount,
+        currency: paymentData.currency,
+        phoneNumber: paymentData.phoneNumber,
+        email: paymentData.email, // Include email for automatic notifications
+        status: 'pending' as const,
+        paymentMethod: 'M-Pesa'
+      }
+
+      const recordedPayment = await googleSheetsService.recordPayment(paymentRecord)
+      console.log('Enhanced payment record created in Google Sheets:', paymentResult.paymentId)
+      console.log('Payment linked to user:', userId || 'anonymous')
+      console.log('Email for notifications:', paymentData.email || 'not provided')
+      
+    } catch (error) {
+      console.error('Error recording payment to Google Sheets:', error)
+      // Don't fail the payment initiation if Google Sheets recording fails
     }
 
     // Return success response

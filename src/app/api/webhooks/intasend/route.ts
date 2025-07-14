@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { googleSheetsService } from '@/services/googleSheets'
+import { EmailService } from '@/services/emailService'
 
 interface IntaSendWebhookPayload {
   invoice_id: string
@@ -50,17 +52,24 @@ export async function POST(request: NextRequest) {
     // Log the payment status update
     console.log(`Payment ${payload.invoice_id} status updated to: ${status}`)
     
-    // Here you could also:
-    // 1. Update database with payment status
-    // 2. Send notifications to users
-    // 3. Trigger business logic based on payment status
+    // Record/Update payment in Google Sheets
+    try {
+      const paymentRecord = await recordPaymentToSheets(payload, status)
+      
+      // If payment is completed, trigger automatic result delivery
+      if (status === 'completed' && paymentRecord) {
+        console.log(`Payment completed for ${payload.invoice_id}, triggering automatic result delivery`)
+        await handleCompletedPayment(paymentRecord, payload)
+      }
+    } catch (error) {
+      console.error('Error recording payment to Google Sheets:', error)
+      // Don't fail the webhook response, just log the error
+    }
     
     if (status === 'completed') {
       console.log(`Payment completed for api_ref: ${payload.api_ref}`)
-      // Additional success handling could go here
     } else if (status === 'failed') {
       console.log(`Payment failed for api_ref: ${payload.api_ref}, reason: ${payload.failed_reason}`)
-      // Additional failure handling could go here
     }
     
     // Respond with 200 to acknowledge receipt
@@ -69,6 +78,124 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Webhook processing error:', error)
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 })
+  }
+}
+
+async function handleCompletedPayment(paymentRecord: any, payload: IntaSendWebhookPayload) {
+  try {
+    const { examNumber, email, userId } = paymentRecord
+    
+    // Get the student result
+    const studentResult = await googleSheetsService.getStudentResult(examNumber)
+    
+    if (!studentResult) {
+      console.warn(`No student result found for exam number: ${examNumber}`)
+      return
+    }
+
+    // If user is logged in (has userId), save the result to their account
+    if (userId) {
+      try {
+        await googleSheetsService.saveUserResult(
+          userId,
+          examNumber,
+          studentResult.name,
+          paymentRecord.paymentId,
+          studentResult
+        )
+        console.log(`Result saved to user account for userId: ${userId}`)
+      } catch (error) {
+        console.error('Error saving result to user account:', error)
+      }
+    }
+
+    // Send email notification if email is available
+    if (email) {
+      try {
+        const emailService = new EmailService()
+        
+        // Send payment receipt
+        await emailService.sendPaymentReceiptEmail(
+          email,
+          studentResult.name,
+          examNumber,
+          payload.value,
+          payload.invoice_id
+        )
+
+        // Send results email
+        await emailService.sendResultsEmail(
+          email,
+          studentResult.name,
+          examNumber,
+          studentResult
+        )
+        
+        console.log(`Automatic emails sent to: ${email}`)
+      } catch (error) {
+        console.error('Error sending automatic emails:', error)
+      }
+    }
+
+  } catch (error) {
+    console.error('Error in handleCompletedPayment:', error)
+  }
+}
+
+async function recordPaymentToSheets(payload: IntaSendWebhookPayload, status: string) {
+  try {
+    // Extract exam number from api_ref (format: exam_{examNumber}_{timestamp})
+    const examNumber = payload.api_ref?.match(/exam_(.+?)_\d+/)?.[1] || ''
+    
+    if (!examNumber) {
+      console.warn('Could not extract exam number from api_ref:', payload.api_ref)
+      return null
+    }
+
+    // Check if payment already exists in sheets
+    const existingPayment = await googleSheetsService.getPaymentByPaymentId(payload.invoice_id)
+    
+    if (existingPayment) {
+      // Update existing payment status
+      const completedAt = status === 'completed' ? new Date().toISOString() : undefined
+      const failureReason = status === 'failed' ? payload.failed_reason : undefined
+      
+      const updatedPayment = await googleSheetsService.updatePaymentStatus(
+        payload.invoice_id,
+        status as any,
+        completedAt,
+        failureReason,
+        payload
+      )
+      
+      console.log('Updated existing payment record in Google Sheets')
+      return updatedPayment
+    } else {
+      // Create new payment record
+      const paymentRecord = {
+        examNumber,
+        paymentId: payload.invoice_id,
+        transactionId: '', // IntaSend doesn't provide transaction ID in webhook
+        apiRef: payload.api_ref,
+        amount: payload.value,
+        currency: payload.currency,
+        phoneNumber: payload.account || '', // IntaSend puts phone number in account field for M-Pesa
+        email: '', // Email not available in webhook payload
+        status: status as any,
+        paymentMethod: 'M-Pesa',
+        completedAt: status === 'completed' ? new Date().toISOString() : undefined,
+        failureReason: status === 'failed' ? payload.failed_reason : undefined,
+        webhookData: payload
+      }
+      
+      const newPayment = await googleSheetsService.recordPayment(paymentRecord)
+      console.log('Created new payment record in Google Sheets')
+      return newPayment
+    }
+    
+  } catch (error) {
+    console.error('Error in recordPaymentToSheets:', error)
+    throw error
   }
 }
 
@@ -101,15 +228,15 @@ function verifyWebhookSignature(body: string, signature: string): boolean {
 function mapIntaSendStatus(state: string): string {
   const statusMap: { [key: string]: string } = {
     'PENDING': 'pending',
-    'PROCESSING': 'processing',
+    'PROCESSING': 'pending', // Map PROCESSING to pending since our type doesn't have processing
     'COMPLETE': 'completed',
     'COMPLETED': 'completed',
     'FAILED': 'failed',
-    'CANCELLED': 'failed',
+    'CANCELLED': 'cancelled',
     'TIMEOUT': 'failed',
   }
   
-  return statusMap[state?.toUpperCase()] || 'unknown'
+  return statusMap[state?.toUpperCase()] || 'pending'
 }
 
 // Export function to get payment status from webhook data

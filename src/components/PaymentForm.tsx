@@ -1,14 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { CreditCard, Loader2, ArrowLeft, Phone, CheckCircle, AlertCircle } from 'lucide-react'
+import { CreditCard, Loader2, ArrowLeft, Phone, CheckCircle, AlertCircle, Shield, Zap, DollarSign } from 'lucide-react'
 import { StudentResult, PaymentData, PaymentResponse } from '@/types/student'
 import toast from 'react-hot-toast'
 
 interface PaymentFormProps {
   studentData: StudentResult
   examNumber: string
-  onPaymentSuccess: () => void
+  onPaymentSuccess: (paymentInfo?: {paymentId: string; userEmail: string}) => void
   onBack: () => void
 }
 
@@ -25,6 +25,7 @@ export default function PaymentForm({
   const [showManualVerification, setShowManualVerification] = useState(false)
   const [isPolling, setIsPolling] = useState(false)
   const [paymentInitiated, setPaymentInitiated] = useState(false)
+  const [currentPaymentId, setCurrentPaymentId] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -47,14 +48,18 @@ export default function PaymentForm({
     setPaymentInitiated(false)
     
     try {
+      const formattedPhone = formatPhoneNumber(phoneNumber.trim())
+      
       const paymentData: PaymentData = {
         examNumber,
-        amount: 150,
+        amount: 15,
         currency: 'KES',
-        phoneNumber: phoneNumber.trim(),
-        email: email.trim() || undefined
+        phoneNumber: formattedPhone,
+        email: email.trim() || undefined,
       }
 
+      setPaymentProgress('Connecting to payment gateway...')
+      
       const response = await fetch('/api/process-payment', {
         method: 'POST',
         headers: {
@@ -63,32 +68,33 @@ export default function PaymentForm({
         body: JSON.stringify(paymentData),
       })
 
-      const data: PaymentResponse = await response.json()
+      const result: PaymentResponse = await response.json()
 
-      if (data.success) {
-        toast.success('Payment initiated! Check your phone for M-Pesa prompt.')
-        setPaymentProgress('Payment initiated. Check your phone for M-Pesa prompt...')
+      if (result.success && result.paymentId) {
+        setPaymentProgress('Payment request sent to your phone...')
         setPaymentInitiated(true)
+        setCurrentPaymentId(result.paymentId)
         
-        // Start polling and show manual verification after 10 seconds
-        setIsPolling(true)
+        toast.success('Payment request sent! Check your phone for M-Pesa prompt')
+        
+        // Start polling for payment status
+        if (result.transactionId) {
+          pollPaymentStatus(result.paymentId, result.transactionId)
+        }
+        
+        // Show manual verification after some time
         setTimeout(() => {
           if (isPolling) {
             setShowManualVerification(true)
-            setPaymentProgress('Waiting for payment confirmation...')
           }
-        }, 10000)
-        
-        // Improved polling with exponential backoff
-        await pollPaymentStatus(data.paymentId!, data.transactionId!)
+        }, 30000) // 30 seconds
         
       } else {
-        toast.error(data.message || 'Payment failed. Please try again.')
-        setPaymentProgress('')
+        throw new Error(result.message || 'Payment initiation failed')
       }
     } catch (error) {
-      console.error('Error processing payment:', error)
-      toast.error('An error occurred while processing payment')
+      console.error('Payment error:', error)
+      toast.error(error instanceof Error ? error.message : 'Payment failed. Please try again.')
       setPaymentProgress('')
     } finally {
       setIsLoading(false)
@@ -98,304 +104,315 @@ export default function PaymentForm({
   const handleManualConfirmation = (confirmed: boolean) => {
     setIsPolling(false)
     setShowManualVerification(false)
-    setPaymentInitiated(false)
     
     if (confirmed) {
-      toast.success('Payment confirmed manually. Loading results...')
-      setPaymentProgress('Payment confirmed! Loading results...')
-      onPaymentSuccess()
+      toast.success('Payment confirmed! Processing your results...')
+      const paymentInfo = currentPaymentId && email 
+        ? { paymentId: currentPaymentId, userEmail: email }
+        : undefined
+      onPaymentSuccess(paymentInfo)
     } else {
-      toast.error('Payment cancelled. Please try again.')
       setPaymentProgress('')
+      setPaymentInitiated(false)
+      toast.error('Payment cancelled. Please try again if you completed the payment.')
     }
   }
 
   const pollPaymentStatus = async (paymentId: string, transactionId: string) => {
-    let pollAttempts = 0
-    const maxAttempts = 30
-    let backoffDelay = 2000 // Start with 2 seconds
+    setIsPolling(true)
+    let attempts = 0
+    const maxAttempts = 24 // 2 minutes of polling (5-second intervals)
     
     const poll = async (): Promise<void> => {
-      if (!isPolling) return // Stop polling if manual verification was used
+      if (!isPolling || attempts >= maxAttempts) {
+        setIsPolling(false)
+        if (attempts >= maxAttempts) {
+          setShowManualVerification(true)
+        }
+        return
+      }
+      
+      attempts++
       
       try {
-        pollAttempts++
-        
-        const statusResponse = await fetch('/api/payment-status', {
+        const response = await fetch('/api/payment-status', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             paymentId,
-            transactionId 
+            examNumber,
           }),
         })
-
-        const statusData = await statusResponse.json()
-
-        if (statusData.success) {
-          // Check if we got data from webhook (faster) or API
-          const dataSource = statusData.source || 'api'
-          
-          if (statusData.status === 'completed') {
+        
+        const result = await response.json()
+        
+        if (result.success) {
+          // Update payment progress based on status
+          if (result.status === 'completed' && result.verified) {
             setIsPolling(false)
-            setShowManualVerification(false)
-            setPaymentInitiated(false)
-            toast.success(`Payment confirmed! (via ${dataSource})`)
-            setPaymentProgress('Payment confirmed! Loading results...')
-            onPaymentSuccess()
+            setPaymentProgress('Payment verified! Loading your results...')
+            toast.success('Payment successful! 🎉')
+            
+            const paymentInfo = email 
+              ? { paymentId, userEmail: email }
+              : undefined
+            
+            setTimeout(() => {
+              onPaymentSuccess(paymentInfo)
+            }, 1500)
             return
-          } else if (statusData.status === 'failed') {
+          } else if (result.status === 'failed') {
             setIsPolling(false)
-            setShowManualVerification(false)
-            setPaymentInitiated(false)
-            toast.error('Payment failed. Please try again.')
             setPaymentProgress('')
+            setPaymentInitiated(false)
+            toast.error(`Payment failed: ${result.message}`)
             return
+          } else if (result.status === 'cancelled') {
+            setIsPolling(false)
+            setPaymentProgress('')
+            setPaymentInitiated(false)
+            toast.error('Payment was cancelled')
+            return
+          } else if (result.status === 'pending') {
+            // Update progress message for pending payments
+            setPaymentProgress('Payment is being processed...')
           }
         }
         
-        // Continue polling if not completed or failed
-        if (pollAttempts >= maxAttempts) {
-          setIsPolling(false)
-          setShowManualVerification(true)
-          setPaymentInitiated(false)
-          setPaymentProgress('Payment verification timeout. Please confirm manually.')
-          return
-        }
-        
-        // Update progress for user (only if manual verification isn't shown)
-        if (!showManualVerification) {
-          if (pollAttempts <= 5) {
-            setPaymentProgress(`Waiting for M-Pesa payment... (${pollAttempts}/5)`)
-          } else if (pollAttempts <= 15) {
-            setPaymentProgress(`Verifying payment... (${pollAttempts}/15)`)
-          } else {
-            setPaymentProgress(`Still checking... (${pollAttempts}/${maxAttempts})`)
-          }
-        }
-        
-        // Show toast updates less frequently
-        if (pollAttempts % 10 === 0) {
-          toast.loading(`Still verifying payment... (${pollAttempts}/${maxAttempts})`, {
-            duration: 3000
-          })
-        }
-        
-        // Schedule next poll with exponential backoff
-        setTimeout(poll, backoffDelay)
-        
-        // Increase backoff delay, but cap at 10 seconds
-        backoffDelay = Math.min(backoffDelay * 1.2, 10000)
+        // Continue polling if payment not yet completed
+        setTimeout(poll, 5000) // Poll every 5 seconds
         
       } catch (error) {
-        console.error('Error checking payment status:', error)
-        
-        if (pollAttempts >= maxAttempts) {
-          setIsPolling(false)
-          setShowManualVerification(true)
-          setPaymentProgress('Payment verification failed. Please confirm manually.')
-        } else {
-          // Continue polling on error with longer delay
-          setTimeout(poll, backoffDelay * 2)
-        }
+        console.error('Payment status check error:', error)
+        setTimeout(poll, 5000) // Continue polling even on error
       }
     }
-
-    // Start polling after 3 seconds (give time for payment to process)
-    setTimeout(poll, 3000)
+    
+    // Start polling after initial delay
+    setTimeout(poll, 5000)
   }
 
   const formatPhoneNumber = (value: string) => {
-    // Remove any non-digit characters
+    // Remove any spaces, dashes, or other characters
     let cleaned = value.replace(/\D/g, '')
     
     // Handle different formats
     if (cleaned.startsWith('254')) {
-      cleaned = cleaned.slice(3)
+      return `+${cleaned}`
     } else if (cleaned.startsWith('0')) {
-      cleaned = cleaned.slice(1)
+      return `+254${cleaned.substring(1)}`
+    } else if (cleaned.length === 9) {
+      return `+254${cleaned}`
     }
     
-    // Format as 07XXXXXXXX
-    if (cleaned.length > 0) {
-      cleaned = '0' + cleaned
-    }
-    
-    return cleaned
+    return `+254${cleaned}`
   }
 
   return (
-    <div className="max-w-md mx-auto">
+    <div className="fade-in">
       <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">
-          Payment Required
-        </h2>
-        <p className="text-gray-600">
-          Complete payment to access your results
-        </p>
+        <div className="flex justify-center mb-6">
+          <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
+            <CreditCard className="h-8 w-8 text-white" />
+          </div>
+        </div>
+        <h2 className="text-section-title mb-3">Secure Payment</h2>
+        <p className="text-body">Complete your payment to access exam results</p>
       </div>
 
-      {/* Student Info */}
-      <div className="bg-gray-50 rounded-lg p-4 mb-6">
-        <h3 className="font-medium text-gray-800 mb-2">Student Information</h3>
-        <div className="space-y-1 text-sm">
-          <p><span className="font-medium">Name:</span> {studentData.name}</p>
-          <p><span className="font-medium">Exam Number:</span> {examNumber}</p>
-          <p><span className="font-medium">Amount:</span> KSh 150</p>
+      {/* Payment Summary */}
+      <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-blue-900">Payment Summary</h3>
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-blue-600" />
+            <span className="text-sm font-medium text-blue-600">Secure</span>
+          </div>
+        </div>
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <span className="text-blue-800">Exam Number:</span>
+            <span className="font-semibold text-blue-900">#{examNumber}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-blue-800">Student Name:</span>
+            <span className="font-semibold text-blue-900">{studentData.name}</span>
+          </div>
+          <div className="flex justify-between items-center pt-3 border-t border-blue-200">
+            <span className="text-blue-800">Amount:</span>
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-emerald-600" />
+              <span className="text-2xl font-bold text-emerald-600">KES 15</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 mb-2">
-            Phone Number (M-Pesa)
-          </label>
-          <div className="relative">
+      {!paymentInitiated ? (
+        <form onSubmit={handleSubmit} className="element-spacing">
+          <div className="form-group">
+            <label className="form-label flex items-center gap-2">
+              <Phone className="h-4 w-4" />
+              M-Pesa Phone Number
+            </label>
             <input
               type="tel"
-              id="phoneNumber"
               value={phoneNumber}
-              onChange={(e) => setPhoneNumber(formatPhoneNumber(e.target.value))}
-              className="input-field pl-10"
-              placeholder="07XXXXXXXX"
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              placeholder="0712345678 or +254712345678"
+              className="input-field text-center text-lg font-semibold"
               required
+              disabled={isLoading}
             />
-            <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-          </div>
-          <p className="text-xs text-gray-500 mt-1">
-            M-Pesa prompt will be sent to this number
-          </p>
-        </div>
-
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-            Email Address (Optional)
-          </label>
-          <input
-            type="email"
-            id="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="input-field"
-            placeholder="your@email.com"
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            Receipt will be sent to this email
-          </p>
-        </div>
-
-        <div className="flex space-x-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="btn-secondary flex items-center space-x-2"
-          >
-            <ArrowLeft size={20} />
-            <span>Back</span>
-          </button>
-          
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="btn-primary flex-1 flex items-center justify-center space-x-2"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="loading-spinner" size={20} />
-                <span>Processing...</span>
-              </>
-            ) : (
-              <>
-                <CreditCard size={20} />
-                <span>Pay KSh 150</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Payment Progress */}
-        {paymentProgress && (
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <Loader2 className="loading-spinner text-blue-600" size={16} />
-              <span className="text-sm text-blue-800">{paymentProgress}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Immediate Manual Verification - Available right after payment initiation */}
-        {paymentInitiated && isPolling && (
-          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center space-x-2 mb-3">
-              <CheckCircle className="text-green-600" size={20} />
-              <h3 className="font-medium text-green-800">Quick Payment Confirmation</h3>
-            </div>
-            <p className="text-sm text-green-700 mb-4">
-              Have you completed the M-Pesa payment? You can confirm manually instead of waiting for automatic verification:
+            <p className="form-help">
+              Enter the phone number registered with M-Pesa
             </p>
-            <div className="flex space-x-3">
-              <button
-                type="button"
-                onClick={() => handleManualConfirmation(true)}
-                className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center space-x-2"
-              >
-                <CheckCircle size={16} />
-                <span>Yes, I completed payment</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleManualConfirmation(false)}
-                className="flex-1 bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
-              >
-                Cancel & try again
-              </button>
-            </div>
           </div>
-        )}
 
-        {/* Manual Verification Section */}
-        {showManualVerification && (
-          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-center space-x-2 mb-3">
-              <AlertCircle className="text-yellow-600" size={20} />
-              <h3 className="font-medium text-yellow-800">Manual Verification</h3>
-            </div>
-            <p className="text-sm text-yellow-700 mb-4">
-              Automatic verification is taking longer than expected. If you've completed the M-Pesa payment successfully, you can confirm manually:
+          <div className="form-group">
+            <label className="form-label">
+              Email Address (Optional)
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your.email@example.com"
+              className="input-field"
+              disabled={isLoading}
+            />
+            <p className="form-help">
+              We'll send a receipt and results notification to this email
             </p>
-            <div className="flex space-x-3">
-              <button
-                type="button"
-                onClick={() => handleManualConfirmation(true)}
-                className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center space-x-2"
-              >
-                <CheckCircle size={16} />
-                <span>Yes, I paid successfully</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleManualConfirmation(false)}
-                className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
-              >
-                No, payment failed
-              </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={isLoading}
+              className="btn-secondary flex-1"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading || !phoneNumber.trim()}
+              className="btn-primary flex-1"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="h-5 w-5" />
+                  Pay KES 15
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="element-spacing">
+          {/* Payment Progress */}
+          <div className="p-6 bg-gradient-to-r from-emerald-50 to-emerald-100 rounded-2xl border border-emerald-200">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
+                {isPolling ? (
+                  <Loader2 className="h-6 w-6 text-emerald-600 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-6 w-6 text-emerald-600" />
+                )}
+              </div>
+              <div>
+                <h3 className="font-semibold text-emerald-900">{paymentProgress}</h3>
+                <p className="text-emerald-700 text-sm">
+                  {isPolling ? 'Waiting for payment confirmation...' : 'Payment processing initiated'}
+                </p>
+              </div>
             </div>
           </div>
-        )}
-      </form>
 
-      <div className="mt-6 p-4 bg-green-50 rounded-lg">
-        <h3 className="font-medium text-green-800 mb-2">Payment Instructions:</h3>
-        <ol className="text-sm text-green-700 space-y-1">
-          <li>1. Click "Pay KSh 150" button</li>
-          <li>2. Check your phone for M-Pesa prompt</li>
-          <li>3. Enter your M-Pesa PIN</li>
-          <li>4. You can confirm payment immediately after completing it</li>
-          <li>5. Or wait for automatic verification (up to 3 minutes)</li>
-          <li>6. Your results will be displayed after confirmation</li>
-        </ol>
+          {/* Instructions */}
+          <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200">
+            <h3 className="font-semibold text-blue-900 mb-4 flex items-center gap-2">
+              <Zap className="h-5 w-5" />
+              Next Steps
+            </h3>
+            <div className="space-y-3 text-sm text-blue-800">
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-semibold text-blue-600">1</span>
+                </div>
+                <p>Check your phone for the M-Pesa payment prompt</p>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-semibold text-blue-600">2</span>
+                </div>
+                <p>Enter your M-Pesa PIN to complete the payment</p>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-semibold text-blue-600">3</span>
+                </div>
+                <p>Wait for automatic verification or use manual confirmation below</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Manual Verification */}
+          {showManualVerification && (
+            <div className="p-6 bg-gradient-to-r from-orange-50 to-orange-100 rounded-2xl border border-orange-200">
+              <div className="flex items-start space-x-4 mb-4">
+                <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <AlertCircle className="h-5 w-5 text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-orange-900 mb-2">Manual Verification</h3>
+                  <p className="text-orange-800 text-sm leading-relaxed">
+                    If you've completed the M-Pesa payment but it's taking longer to verify automatically, 
+                    you can confirm manually below.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => handleManualConfirmation(true)}
+                  className="btn-success flex-1"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  Yes, I completed payment
+                </button>
+                <button
+                  onClick={() => handleManualConfirmation(false)}
+                  className="btn-secondary flex-1"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  No, go back
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Security Notice */}
+      <div className="mt-8 p-6 bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl border border-gray-200">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+            <Shield className="h-4 w-4 text-gray-600" />
+          </div>
+          <div>
+            <h4 className="font-semibold text-gray-900 text-sm">Secure Payment</h4>
+            <p className="text-gray-700 text-xs">All payments are processed securely through M-Pesa</p>
+          </div>
+        </div>
       </div>
     </div>
   )
