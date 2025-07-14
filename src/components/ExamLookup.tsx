@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Loader2, CreditCard, AlertCircle, FileText, BookOpen } from 'lucide-react'
+import { Search, Loader2, CreditCard, AlertCircle, FileText, BookOpen, CheckCircle, RefreshCw } from 'lucide-react'
 import { StudentResult, ExamLookupResponse } from '@/types/student'
 import toast from 'react-hot-toast'
 
@@ -14,6 +14,8 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
   const [examNumber, setExamNumber] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null)
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false)
+  const [verificationExamNumber, setVerificationExamNumber] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -56,6 +58,63 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
     }
   }
 
+  const handleStandaloneVerification = async () => {
+    if (!verificationExamNumber.trim()) {
+      toast.error('Please enter your exam number to verify payment')
+      return
+    }
+
+    setIsVerifyingPayment(true)
+    
+    try {
+      const response = await fetch('/api/verify-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          examNumber: verificationExamNumber.trim(),
+          forceRefresh: true,
+        }),
+      })
+      
+      const result = await response.json()
+      
+      if (result.success && result.isValid) {
+        toast.success('Payment verified! Redirecting to your results...')
+        
+        // Try to fetch the actual results
+        try {
+          const lookupResponse = await fetch('/api/lookup-exam', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ examNumber: verificationExamNumber.trim() }),
+          })
+
+          const lookupData: ExamLookupResponse = await lookupResponse.json()
+
+          if (lookupData.success && lookupData.data) {
+            onExamFound(lookupData.data, verificationExamNumber.trim())
+          } else {
+            toast.error('Payment verified but failed to fetch results. Please try again.')
+          }
+        } catch (error) {
+          console.error('Error fetching results after verification:', error)
+          toast.error('Payment verified but failed to fetch results. Please try again.')
+        }
+      } else {
+        toast.error(result.message || 'No valid payment found for this exam number')
+      }
+    } catch (error) {
+      console.error('Verification error:', error)
+      toast.error('Error during verification. Please try again.')
+    } finally {
+      setIsVerifyingPayment(false)
+    }
+  }
+
   return (
     <div className="fade-in">
       <div className="text-center mb-8">
@@ -68,7 +127,7 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
         <p className="text-body">Enter your exam number to search for your results</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="element-spacing">
+      <form onSubmit={handleSubmit} className="element-spacing mb-8">
         <div className="form-group">
           <label className="form-label flex items-center gap-2">
             <BookOpen className="h-4 w-4" />
@@ -124,8 +183,51 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
         )}
       </form>
 
+      {/* Standalone Payment Verification Section */}
+      <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 mb-8">
+        <div className="flex items-start space-x-4 mb-4">
+          <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <CheckCircle className="h-5 w-5 text-blue-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-blue-900 mb-2">Already Made Payment?</h3>
+            <p className="text-blue-800 text-sm leading-relaxed">
+              If you've already made a payment for your exam results, you can verify it here to access your results immediately.
+            </p>
+          </div>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row gap-3">
+          <input
+            type="text"
+            value={verificationExamNumber}
+            onChange={(e) => setVerificationExamNumber(e.target.value)}
+            placeholder="Enter exam number"
+            className="input-field flex-1"
+            disabled={isVerifyingPayment}
+          />
+          <button
+            onClick={handleStandaloneVerification}
+            disabled={isVerifyingPayment || !verificationExamNumber.trim()}
+            className="btn-primary"
+          >
+            {isVerifyingPayment ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Verifying...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4" />
+                Verify Payment
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* Instructions */}
-      <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200">
+      <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200">
         <h3 className="font-semibold text-blue-900 mb-4 flex items-center gap-2">
           <FileText className="h-5 w-5" />
           How it works
@@ -148,6 +250,12 @@ export default function ExamLookup({ onExamFound, onPaymentRequired }: ExamLooku
               <span className="text-xs font-semibold text-blue-600">3</span>
             </div>
             <p>Once verified, you can view and download your exam results instantly</p>
+          </div>
+          <div className="flex items-start space-x-3">
+            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+              <span className="text-xs font-semibold text-blue-600">4</span>
+            </div>
+            <p>If you've already paid, use the "Verify Payment" section above to access results</p>
           </div>
         </div>
       </div>
