@@ -89,16 +89,29 @@ export default function PaymentForm({
     }
   }
 
+  const testButtonClick = () => {
+    alert('Button clicked successfully! If you see this, the button is working.')
+    console.log('Test button click function fired!')
+  }
+
   const handleProviderVerification = async () => {
+    console.log('Payment verification button clicked!') // Debug log
+    console.log('Current exam number:', examNumber) // Debug log
+    console.log('isProviderVerifying:', isProviderVerifying) // Debug log
+    console.log('isLoading:', isLoading) // Debug log
+    
     if (!examNumber) {
+      console.error('No exam number available for verification')
       toast.error('No exam number available for verification')
       return
     }
 
+    console.log('Starting payment verification process...') // Debug log
     setIsProviderVerifying(true)
     setPaymentProgress('Checking payment records...')
     
     try {
+      console.log('Making API call to verify-payment...') // Debug log
       const response = await fetch('/api/verify-payment', {
         method: 'POST',
         headers: {
@@ -110,9 +123,12 @@ export default function PaymentForm({
         }),
       })
       
+      console.log('API response status:', response.status) // Debug log
       const result = await response.json()
+      console.log('API response result:', result) // Debug log
       
       if (result.success && result.isValid && result.hasValidPayment) {
+        console.log('Payment verification successful!') // Debug log
         setPaymentProgress('Valid payment found! Loading your results...')
         toast.success('Payment verified successfully! 🎉')
         
@@ -122,10 +138,12 @@ export default function PaymentForm({
         
         setTimeout(async () => {
           setPaymentProgress('Fetching your exam results...')
+          console.log('Calling onPaymentSuccess with paymentInfo:', paymentInfo) // Debug log
           await onPaymentSuccess(paymentInfo)
         }, 1000)
       } else {
         // Show clear verification result
+        console.log('Payment verification failed:', result) // Debug log
         const message = result.message || 'No valid payment found for this exam number'
         toast.error(`Verification failed: ${message}`)
         setPaymentProgress(`Verification Result: ${message}`)
@@ -144,6 +162,7 @@ export default function PaymentForm({
         setPaymentProgress('')
       }, 3000)
     } finally {
+      console.log('Payment verification process completed') // Debug log
       setIsProviderVerifying(false)
     }
   }
@@ -353,24 +372,55 @@ export default function PaymentForm({
                 <p className="text-green-800 text-sm leading-relaxed mb-3">
                   If you've completed the M-Pesa payment, click below to check our payment records for your exam number.
                 </p>
+                {/* Debug info */}
+                <div className="text-xs text-gray-600 mt-2">
+                  Debug: isProviderVerifying={isProviderVerifying.toString()}, isLoading={isLoading.toString()}, examNumber={examNumber}
+                </div>
               </div>
             </div>
+            
+            {/* Show button state */}
+            <div className="mb-2 text-sm text-gray-600">
+              Button Status: {(isProviderVerifying || isLoading) ? 'DISABLED' : 'ENABLED'}
+            </div>
+            
             <button
-              onClick={handleProviderVerification}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                console.log('Button click event fired!') // Immediate debug log
+                console.log('Event details:', e)
+                handleProviderVerification()
+              }}
               disabled={isProviderVerifying || isLoading}
-              className="btn-success w-full"
+              className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-200 ${
+                (isProviderVerifying || isLoading) 
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                  : 'bg-green-600 text-white cursor-pointer hover:bg-green-700 active:bg-green-800'
+              }`}
+              style={{ zIndex: 10, position: 'relative' }} // Ensure button is clickable
+              type="button"
             >
               {isProviderVerifying ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
                   Checking Payment Records...
                 </>
               ) : (
                 <>
-                  <Shield className="h-4 w-4" />
+                  <Shield className="h-4 w-4 inline mr-2" />
                   Check for Valid Payment
                 </>
               )}
+            </button>
+            
+            {/* Temporary test button for debugging */}
+            <button
+              onClick={testButtonClick}
+              className="btn-outline w-full mt-2"
+              type="button"
+            >
+              🧪 Test Button (Click to verify button works)
             </button>
           </div>
 
