@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken'
 
 export async function POST(request: NextRequest) {
   try {
-    const { examNumber } = await request.json()
+    const { examNumber, skipPaymentCheck } = await request.json()
 
     if (!examNumber) {
       return NextResponse.json<ExamLookupResponse>({
@@ -36,16 +36,19 @@ export async function POST(request: NextRequest) {
       console.log('No valid token provided for exam lookup')
     }
 
-    // Verify payment before looking up results
-    const paymentVerification = await googleSheetsService.verifyPaymentForExamAccess(examNumberStr, userId)
-    
-    if (!paymentVerification.isValid) {
-      return NextResponse.json<ExamLookupResponse>({
-        success: false,
-        message: paymentVerification.message,
-        paymentRequired: true,
-        paymentRecord: paymentVerification.paymentRecord,
-      }, { status: 402 }) // 402 Payment Required
+    // Skip payment verification if requested (for getting student data for payment form display)
+    if (!skipPaymentCheck) {
+      // Verify payment before looking up results
+      const paymentVerification = await googleSheetsService.verifyPaymentForExamAccess(examNumberStr, userId)
+      
+      if (!paymentVerification.isValid) {
+        return NextResponse.json<ExamLookupResponse>({
+          success: false,
+          message: paymentVerification.message,
+          paymentRequired: true,
+          paymentRecord: paymentVerification.paymentRecord,
+        }, { status: 402 }) // 402 Payment Required
+      }
     }
 
     // Look up the student result
@@ -58,6 +61,18 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
+    // For skip payment check requests, return basic student info
+    if (skipPaymentCheck) {
+      return NextResponse.json<ExamLookupResponse>({
+        success: true,
+        data: studentResult,
+        message: 'Student data found for payment form display',
+      })
+    }
+
+    // For normal requests, include payment verification info
+    const paymentVerification = await googleSheetsService.verifyPaymentForExamAccess(examNumberStr, userId)
+    
     return NextResponse.json<ExamLookupResponse>({
       success: true,
       data: studentResult,

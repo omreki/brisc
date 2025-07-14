@@ -90,13 +90,13 @@ export default function PaymentForm({
   }
 
   const handleProviderVerification = async () => {
-    if (!currentPaymentId && !examNumber) {
-      toast.error('No payment information available for verification')
+    if (!examNumber) {
+      toast.error('No exam number available for verification')
       return
     }
 
     setIsProviderVerifying(true)
-    setPaymentProgress('Verifying payment with provider...')
+    setPaymentProgress('Checking payment records...')
     
     try {
       const response = await fetch('/api/verify-payment', {
@@ -106,16 +106,15 @@ export default function PaymentForm({
         },
         body: JSON.stringify({
           examNumber,
-          paymentId: currentPaymentId,
-          forceRefresh: true, // This ensures direct provider check
+          checkPaymentsSheetOnly: true, // Use simple payments sheet check
         }),
       })
       
       const result = await response.json()
       
-      if (result.success && result.isValid) {
-        setPaymentProgress('Payment verified successfully! Loading your results...')
-        toast.success('Payment confirmed with provider! 🎉')
+      if (result.success && result.isValid && result.hasValidPayment) {
+        setPaymentProgress('Valid payment found! Loading your results...')
+        toast.success('Payment verified successfully! 🎉')
         
         const paymentInfo = result.paymentRecord?.paymentId && email 
           ? { paymentId: result.paymentRecord.paymentId, userEmail: email }
@@ -127,7 +126,7 @@ export default function PaymentForm({
         }, 1000)
       } else {
         // Show clear verification result
-        const message = result.message || 'Payment not found or not completed'
+        const message = result.message || 'No valid payment found for this exam number'
         toast.error(`Verification failed: ${message}`)
         setPaymentProgress(`Verification Result: ${message}`)
         
@@ -137,8 +136,8 @@ export default function PaymentForm({
         }, 5000)
       }
     } catch (error) {
-      console.error('Provider verification error:', error)
-      toast.error('Error during verification. Please try again.')
+      console.error('Payment verification error:', error)
+      toast.error('Error checking payment records. Please try again.')
       setPaymentProgress('Verification failed - please try again')
       
       setTimeout(() => {
@@ -343,16 +342,16 @@ export default function PaymentForm({
             </p>
           </div>
 
-          {/* Provider Verification Section - Always visible after payment initiation */}
+          {/* Payment Verification Section - Always visible after payment initiation */}
           <div className="p-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl border border-green-200 mb-6">
             <div className="flex items-start space-x-4 mb-4">
               <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
                 <Shield className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-green-900 mb-2">Verify Payment with Provider</h3>
+                <h3 className="font-semibold text-green-900 mb-2">Check for Valid Payment</h3>
                 <p className="text-green-800 text-sm leading-relaxed mb-3">
-                  If you've completed the M-Pesa payment, click below to verify directly with IntaSend payment provider for accurate payment status.
+                  If you've completed the M-Pesa payment, click below to check our payment records for your exam number.
                 </p>
               </div>
             </div>
@@ -364,12 +363,12 @@ export default function PaymentForm({
               {isProviderVerifying ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Verifying with Provider...
+                  Checking Payment Records...
                 </>
               ) : (
                 <>
                   <Shield className="h-4 w-4" />
-                  Verify Payment with Provider
+                  Check for Valid Payment
                 </>
               )}
             </button>

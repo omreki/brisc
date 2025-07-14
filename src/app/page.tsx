@@ -56,35 +56,87 @@ export default function Home() {
     setStep('results') // Skip payment step since payment has been verified
   }
 
-  const handlePaymentRequired = (examNum: string, message: string) => {
-    const dummyStudentData: StudentResult = {
-      examNumber: examNum,
-      name: `Student ${examNum}`,
-      oldTestamentSurvey: '',
-      newTestamentSurvey: '',
-      prophets: '',
-      paulsMissionaryJourney: '',
-      hebrewLanguage: '',
-      bookOfHebrew: '',
-      greekLanguage: '',
-      bibleStudyMethod: '',
-      bookOfRomans: '',
-      theBookOfJudges: '',
-      abrahamsJourney: '',
-      kingsOfIsrael: '',
-      kingsOfJudah: '',
-      epistles: '',
-      churchHistory: '',
-      theology: '',
-      tabernacle: '',
-      theBookOfEzekiel: '',
-      theJourneyOfIsraelites: '',
-      churchAdministration: '',
-      practicum: '',
-      ref: ''
+  const handlePaymentRequired = async (examNum: string, message: string) => {
+    // Try to get actual student data for payment form display
+    try {
+      const response = await fetch('/api/lookup-exam', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          examNumber: examNum,
+          skipPaymentCheck: true // Flag to get student data without payment verification
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.data) {
+        // Use actual student data
+        setStudentData(data.data)
+      } else {
+        // Fallback to dummy data if we can't get real data
+        const dummyStudentData: StudentResult = {
+          examNumber: examNum,
+          name: `Student ${examNum}`,
+          oldTestamentSurvey: '',
+          newTestamentSurvey: '',
+          prophets: '',
+          paulsMissionaryJourney: '',
+          hebrewLanguage: '',
+          bookOfHebrew: '',
+          greekLanguage: '',
+          bibleStudyMethod: '',
+          bookOfRomans: '',
+          theBookOfJudges: '',
+          abrahamsJourney: '',
+          kingsOfIsrael: '',
+          kingsOfJudah: '',
+          epistles: '',
+          churchHistory: '',
+          theology: '',
+          tabernacle: '',
+          theBookOfEzekiel: '',
+          theJourneyOfIsraelites: '',
+          churchAdministration: '',
+          practicum: '',
+          ref: ''
+        }
+        setStudentData(dummyStudentData)
+      }
+    } catch (error) {
+      console.error('Error fetching student data for payment form:', error)
+      // Fallback to dummy data on error
+      const dummyStudentData: StudentResult = {
+        examNumber: examNum,
+        name: `Student ${examNum}`,
+        oldTestamentSurvey: '',
+        newTestamentSurvey: '',
+        prophets: '',
+        paulsMissionaryJourney: '',
+        hebrewLanguage: '',
+        bookOfHebrew: '',
+        greekLanguage: '',
+        bibleStudyMethod: '',
+        bookOfRomans: '',
+        theBookOfJudges: '',
+        abrahamsJourney: '',
+        kingsOfIsrael: '',
+        kingsOfJudah: '',
+        epistles: '',
+        churchHistory: '',
+        theology: '',
+        tabernacle: '',
+        theBookOfEzekiel: '',
+        theJourneyOfIsraelites: '',
+        churchAdministration: '',
+        practicum: '',
+        ref: ''
+      }
+      setStudentData(dummyStudentData)
     }
     
-    setStudentData(dummyStudentData)
     setExamNumber(examNum)
     setPaymentVerified(false) // Payment not verified yet
     setStep('payment')
