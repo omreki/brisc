@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CreditCard, Loader2, ArrowLeft, Phone, CheckCircle, AlertCircle, Shield, Zap, DollarSign, Search, RefreshCw } from 'lucide-react'
+import { CreditCard, Loader2, ArrowLeft, Phone, CheckCircle, AlertCircle, Shield, Zap, DollarSign, XCircle } from 'lucide-react'
 import { StudentResult, PaymentData, PaymentResponse } from '@/types/student'
 import toast from 'react-hot-toast'
 
@@ -26,7 +26,8 @@ export default function PaymentForm({
   const [isPolling, setIsPolling] = useState(false)
   const [paymentInitiated, setPaymentInitiated] = useState(false)
   const [currentPaymentId, setCurrentPaymentId] = useState<string | null>(null)
-  const [isProviderVerifying, setIsProviderVerifying] = useState(false)
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false)
+  const [verificationError, setVerificationError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -89,29 +90,18 @@ export default function PaymentForm({
     }
   }
 
-  const testButtonClick = () => {
-    alert('Button clicked successfully! If you see this, the button is working.')
-    console.log('Test button click function fired!')
-  }
-
-  const handleProviderVerification = async () => {
-    console.log('Payment verification button clicked!') // Debug log
-    console.log('Current exam number:', examNumber) // Debug log
-    console.log('isProviderVerifying:', isProviderVerifying) // Debug log
-    console.log('isLoading:', isLoading) // Debug log
-    
+  const handlePaymentVerification = async () => {
     if (!examNumber) {
-      console.error('No exam number available for verification')
       toast.error('No exam number available for verification')
       return
     }
 
-    console.log('Starting payment verification process...') // Debug log
-    setIsProviderVerifying(true)
+    setIsVerifyingPayment(true)
+    setVerificationError(null)
     setPaymentProgress('Checking payment records...')
     
     try {
-      console.log('Making API call to verify-payment...') // Debug log
+      // Check payments sheet directly for this exam number
       const response = await fetch('/api/verify-payment', {
         method: 'POST',
         headers: {
@@ -119,16 +109,14 @@ export default function PaymentForm({
         },
         body: JSON.stringify({
           examNumber,
-          checkPaymentsSheetOnly: true, // Use simple payments sheet check
+          checkPaymentsSheetOnly: true, // Flag to only check payments sheet
         }),
       })
       
-      console.log('API response status:', response.status) // Debug log
       const result = await response.json()
-      console.log('API response result:', result) // Debug log
       
       if (result.success && result.isValid && result.hasValidPayment) {
-        console.log('Payment verification successful!') // Debug log
+        // Valid payment found - redirect to results immediately
         setPaymentProgress('Valid payment found! Loading your results...')
         toast.success('Payment verified successfully! 🎉')
         
@@ -138,32 +126,23 @@ export default function PaymentForm({
         
         setTimeout(async () => {
           setPaymentProgress('Fetching your exam results...')
-          console.log('Calling onPaymentSuccess with paymentInfo:', paymentInfo) // Debug log
           await onPaymentSuccess(paymentInfo)
         }, 1000)
       } else {
-        // Show clear verification result
-        console.log('Payment verification failed:', result) // Debug log
-        const message = result.message || 'No valid payment found for this exam number'
-        toast.error(`Verification failed: ${message}`)
-        setPaymentProgress(`Verification Result: ${message}`)
-        
-        // Show verification status for a few seconds, then hide
-        setTimeout(() => {
-          setPaymentProgress('')
-        }, 5000)
+        // No valid payment found - show error and request new payment
+        const errorMessage = result.message || 'No valid payment found for this exam number'
+        setVerificationError(errorMessage)
+        toast.error(errorMessage)
+        setPaymentProgress('')
       }
     } catch (error) {
       console.error('Payment verification error:', error)
-      toast.error('Error checking payment records. Please try again.')
-      setPaymentProgress('Verification failed - please try again')
-      
-      setTimeout(() => {
-        setPaymentProgress('')
-      }, 3000)
+      const errorMsg = 'Error checking payment records. Please try again.'
+      setVerificationError(errorMsg)
+      toast.error(errorMsg)
+      setPaymentProgress('')
     } finally {
-      console.log('Payment verification process completed') // Debug log
-      setIsProviderVerifying(false)
+      setIsVerifyingPayment(false)
     }
   }
 
@@ -177,7 +156,7 @@ export default function PaymentForm({
         setIsPolling(false)
         if (attempts >= maxAttempts) {
           setShowProviderVerification(true)
-          setPaymentProgress('Auto-verification timed out. Please verify manually with provider.')
+          setPaymentProgress('Auto-verification timed out. Please verify manually.')
         }
         return
       }
@@ -372,57 +351,53 @@ export default function PaymentForm({
                 <p className="text-green-800 text-sm leading-relaxed mb-3">
                   If you've completed the M-Pesa payment, click below to check our payment records for your exam number.
                 </p>
-                {/* Debug info */}
-                <div className="text-xs text-gray-600 mt-2">
-                  Debug: isProviderVerifying={isProviderVerifying.toString()}, isLoading={isLoading.toString()}, examNumber={examNumber}
-                </div>
               </div>
             </div>
             
-            {/* Show button state */}
-            <div className="mb-2 text-sm text-gray-600">
-              Button Status: {(isProviderVerifying || isLoading) ? 'DISABLED' : 'ENABLED'}
-            </div>
-            
             <button
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                console.log('Button click event fired!') // Immediate debug log
-                console.log('Event details:', e)
-                handleProviderVerification()
-              }}
-              disabled={isProviderVerifying || isLoading}
-              className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-200 ${
-                (isProviderVerifying || isLoading) 
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                  : 'bg-green-600 text-white cursor-pointer hover:bg-green-700 active:bg-green-800'
-              }`}
-              style={{ zIndex: 10, position: 'relative' }} // Ensure button is clickable
-              type="button"
+              onClick={handlePaymentVerification}
+              disabled={isVerifyingPayment || isLoading}
+              className="btn-success w-full"
             >
-              {isProviderVerifying ? (
+              {isVerifyingPayment ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   Checking Payment Records...
                 </>
               ) : (
                 <>
-                  <Shield className="h-4 w-4 inline mr-2" />
+                  <Shield className="h-4 w-4" />
                   Check for Valid Payment
                 </>
               )}
             </button>
-            
-            {/* Temporary test button for debugging */}
-            <button
-              onClick={testButtonClick}
-              className="btn-outline w-full mt-2"
-              type="button"
-            >
-              🧪 Test Button (Click to verify button works)
-            </button>
           </div>
+
+          {/* Verification Error Display */}
+          {verificationError && (
+            <div className="p-6 bg-gradient-to-r from-red-50 to-red-100 rounded-2xl border border-red-200 mb-6">
+              <div className="flex items-start space-x-4">
+                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <XCircle className="h-5 w-5 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-red-900 mb-2">No Valid Payment Found</h3>
+                  <p className="text-red-800 text-sm leading-relaxed mb-4">
+                    {verificationError}
+                  </p>
+                  <div className="bg-red-50 p-4 rounded-xl border border-red-200">
+                    <h4 className="font-medium text-red-900 mb-2">What to do next:</h4>
+                    <ul className="text-red-800 text-sm space-y-1">
+                      <li>• Complete the M-Pesa payment on your phone if you haven't already</li>
+                      <li>• Wait a few minutes for the payment to process, then try again</li>
+                      <li>• Make sure you entered the correct phone number for payment</li>
+                      <li>• Contact support if you believe this is an error</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Show manual verification message after polling timeout */}
           {showProviderVerification && (
@@ -434,7 +409,7 @@ export default function PaymentForm({
                 <div>
                   <h3 className="font-semibold text-blue-900 mb-2">Manual Verification Available</h3>
                   <p className="text-blue-800 text-sm leading-relaxed">
-                    Automatic verification timed out. Please use the "Verify Payment with Provider" button above to check your payment status directly with IntaSend.
+                    Automatic verification timed out. Please use the "Check for Valid Payment" button above to verify your payment status.
                   </p>
                 </div>
               </div>
@@ -488,7 +463,7 @@ export default function PaymentForm({
             <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
               <span className="text-xs font-semibold text-green-600">4</span>
             </div>
-            <p>Use "Verify Payment with Provider" button for direct payment verification</p>
+            <p>Use "Check for Valid Payment" button for direct payment verification</p>
           </div>
         </div>
       </div>
