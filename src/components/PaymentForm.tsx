@@ -154,6 +154,7 @@ export default function PaymentForm({
     const poll = async (): Promise<void> => {
       if (!isPolling || attempts >= maxAttempts) {
         setIsPolling(false)
+        setIsLoading(false) // Reset loading state when polling ends
         if (attempts >= maxAttempts) {
           setShowProviderVerification(true)
           setPaymentProgress('Auto-verification timed out. Please verify manually.')
@@ -356,7 +357,7 @@ export default function PaymentForm({
             
             <button
               onClick={handlePaymentVerification}
-              disabled={isVerifyingPayment || isLoading}
+              disabled={isVerifyingPayment}
               className="btn-success w-full"
             >
               {isVerifyingPayment ? (
