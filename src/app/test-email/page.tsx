@@ -389,7 +389,7 @@ export default function TestEmailPage() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium text-gray-600">Payment Amount</span>
-                  <span className="text-sm text-gray-900 font-semibold">KES 150</span>
+                                        <span className="text-sm text-gray-900 font-semibold">KES 150</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium text-gray-600">Required Sheet</span>

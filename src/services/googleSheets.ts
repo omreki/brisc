@@ -352,11 +352,11 @@ export class GoogleSheetsService {
         throw new Error('Google Sheets ID not configured')
       }
 
-      // Get the data from the sheet
+      // Get the data from the sheet - expanded range to accommodate all new fields
       const response = await sheets.spreadsheets.values.get({
         auth: authClient,
         spreadsheetId,
-        range: 'Sheet1!A:X', // Adjust range as needed
+        range: 'Sheet1!A:AX', // Expanded to handle 50 columns (A to AX)
       })
 
       const rows = response.data.values
@@ -374,32 +374,60 @@ export class GoogleSheetsService {
         return null
       }
 
-      // Map the row data to our StudentResult interface
+      // Map the row data to our StudentResult interface with expanded fields
       const result: StudentResult = {
         examNumber: dataRow[0] || '',
-        name: dataRow[1] || '',
-        oldTestamentSurvey: dataRow[2] || '',
-        newTestamentSurvey: dataRow[3] || '',
-        prophets: dataRow[4] || '',
-        paulsMissionaryJourney: dataRow[5] || '',
-        hebrewLanguage: dataRow[6] || '',
-        bookOfHebrew: dataRow[7] || '',
-        greekLanguage: dataRow[8] || '',
-        bibleStudyMethod: dataRow[9] || '',
-        bookOfRomans: dataRow[10] || '',
-        theBookOfJudges: dataRow[11] || '',
-        abrahamsJourney: dataRow[12] || '',
-        kingsOfIsrael: dataRow[13] || '',
-        kingsOfJudah: dataRow[14] || '',
-        epistles: dataRow[15] || '',
-        churchHistory: dataRow[16] || '',
-        theology: dataRow[17] || '',
-        tabernacle: dataRow[18] || '',
-        theBookOfEzekiel: dataRow[19] || '',
-        theJourneyOfIsraelites: dataRow[20] || '',
-        churchAdministration: dataRow[21] || '',
-        practicum: dataRow[22] || '',
-        ref: dataRow[23] || '',
+        admissionNumber: dataRow[1] || '',
+        name: dataRow[2] || '',
+        dateOfBirth: dataRow[3] || '',
+        // Full subject names
+        oldTestamentSurvey: dataRow[4] || '',
+        newTestamentSurvey: dataRow[5] || '',
+        prophets: dataRow[6] || '',
+        paulsMissionaryJourney: dataRow[7] || '',
+        churchHistory: dataRow[8] || '',
+        bookOfHebrew: dataRow[9] || '',
+        greekLanguage: dataRow[10] || '',
+        bibleStudyMethod: dataRow[11] || '',
+        bookOfRomans: dataRow[12] || '',
+        theBookOfJudges: dataRow[13] || '',
+        abrahamsJourney: dataRow[14] || '',
+        kingsOfIsrael: dataRow[15] || '',
+        kingsOfJudah: dataRow[16] || '',
+        epistles: dataRow[17] || '',
+        hebrewLanguage: dataRow[18] || '',
+        theology: dataRow[19] || '',
+        tabernacle: dataRow[20] || '',
+        theBookOfEzekiel: dataRow[21] || '',
+        theJourneyOfIsraelites: dataRow[22] || '',
+        churchAdministration: dataRow[23] || '',
+        practicum: dataRow[24] || '',
+        overallGradePoint: dataRow[25] || '',
+        overallGrade: dataRow[26] || '',
+        // Abbreviated subject names
+        oldT: dataRow[27] || '',
+        newT: dataRow[28] || '',
+        pro: dataRow[29] || '',
+        pauls: dataRow[30] || '',
+        hebrewL: dataRow[31] || '',
+        hebrew: dataRow[32] || '',
+        greekL: dataRow[33] || '',
+        bibleStu: dataRow[34] || '',
+        bookOfRo: dataRow[35] || '',
+        theBookOfJu: dataRow[36] || '',
+        abrahams: dataRow[37] || '',
+        kingsOfIsr: dataRow[38] || '',
+        kingsOfJu: dataRow[39] || '',
+        epis: dataRow[40] || '',
+        churchHis: dataRow[41] || '',
+        theol: dataRow[42] || '',
+        tabe: dataRow[43] || '',
+        theBookOfEze: dataRow[44] || '',
+        theJourneyOfIsra: dataRow[45] || '',
+        churchAdmi: dataRow[46] || '',
+        prac: dataRow[47] || '',
+        over: dataRow[48] || '',
+        ref: dataRow[49] || '',
       }
 
       return result

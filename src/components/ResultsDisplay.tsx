@@ -88,7 +88,7 @@ export default function ResultsDisplay({ studentData, examNumber, onStartOver, p
     { name: 'New Testament Survey', value: studentData.newTestamentSurvey },
     { name: 'Prophets', value: studentData.prophets },
     { name: "Paul's Missionary Journey", value: studentData.paulsMissionaryJourney },
-    { name: 'Hebrew Language', value: studentData.hebrewLanguage },
+    { name: 'Church History', value: studentData.churchHistory },
     { name: 'Book of Hebrew', value: studentData.bookOfHebrew },
     { name: 'Greek Language', value: studentData.greekLanguage },
     { name: 'Bible Study Method', value: studentData.bibleStudyMethod },
@@ -98,7 +98,7 @@ export default function ResultsDisplay({ studentData, examNumber, onStartOver, p
     { name: 'Kings of Israel', value: studentData.kingsOfIsrael },
     { name: 'Kings of Judah', value: studentData.kingsOfJudah },
     { name: 'Epistles', value: studentData.epistles },
-    { name: 'Church History', value: studentData.churchHistory },
+    { name: 'Hebrew Language', value: studentData.hebrewLanguage },
     { name: 'Theology', value: studentData.theology },
     { name: 'Tabernacle', value: studentData.tabernacle },
     { name: 'The Book of Ezekiel', value: studentData.theBookOfEzekiel },
@@ -254,6 +254,18 @@ export default function ResultsDisplay({ studentData, examNumber, onStartOver, p
                   <span className="font-medium text-gray-700">{studentData.ref}</span>
                 </div>
               )}
+              {studentData.admissionNumber && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 font-medium">Admission Number:</span>
+                  <span className="font-medium text-gray-700">{studentData.admissionNumber}</span>
+                </div>
+              )}
+              {studentData.dateOfBirth && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 font-medium">Date of Birth:</span>
+                  <span className="font-medium text-gray-700">{studentData.dateOfBirth}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -281,6 +293,18 @@ export default function ResultsDisplay({ studentData, examNumber, onStartOver, p
                   {performance.level}
                 </span>
               </div>
+              {studentData.overallGradePoint && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 font-medium">Overall Grade Point:</span>
+                  <span className="font-semibold text-gray-900">{studentData.overallGradePoint}</span>
+                </div>
+              )}
+              {studentData.overallGrade && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 font-medium">Overall Grade:</span>
+                  <span className="font-semibold text-gray-900">{studentData.overallGrade}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

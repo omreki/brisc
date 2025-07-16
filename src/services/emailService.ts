@@ -223,13 +223,13 @@ export class EmailService {
     studentResult: StudentResult
   ): Promise<{ success: boolean; message?: string }> {
     try {
-      // Get all subject fields and their values
+      // Get all subject fields and their values - updated to include all new subjects
       const subjects = [
         { name: 'Old Testament Survey', value: studentResult.oldTestamentSurvey },
         { name: 'New Testament Survey', value: studentResult.newTestamentSurvey },
         { name: 'Prophets', value: studentResult.prophets },
         { name: "Paul's Missionary Journey", value: studentResult.paulsMissionaryJourney },
-        { name: 'Hebrew Language', value: studentResult.hebrewLanguage },
+        { name: 'Church History', value: studentResult.churchHistory },
         { name: 'Book of Hebrew', value: studentResult.bookOfHebrew },
         { name: 'Greek Language', value: studentResult.greekLanguage },
         { name: 'Bible Study Method', value: studentResult.bibleStudyMethod },
@@ -239,7 +239,7 @@ export class EmailService {
         { name: 'Kings of Israel', value: studentResult.kingsOfIsrael },
         { name: 'Kings of Judah', value: studentResult.kingsOfJudah },
         { name: 'Epistles', value: studentResult.epistles },
-        { name: 'Church History', value: studentResult.churchHistory },
+        { name: 'Hebrew Language', value: studentResult.hebrewLanguage },
         { name: 'Theology', value: studentResult.theology },
         { name: 'Tabernacle', value: studentResult.tabernacle },
         { name: 'The Book of Ezekiel', value: studentResult.theBookOfEzekiel },

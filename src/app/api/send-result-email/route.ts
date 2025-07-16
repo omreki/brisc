@@ -42,12 +42,19 @@ export async function POST(request: NextRequest) {
 
     // Validate that resultData is a valid StudentResult
     const requiredFields = [
-      'name', 'examNumber', 'oldTestamentSurvey', 'newTestamentSurvey',
-      'prophets', 'paulsMissionaryJourney', 'hebrewLanguage', 'bookOfHebrew',
-      'greekLanguage', 'bibleStudyMethod', 'bookOfRomans', 'theBookOfJudges',
-      'abrahamsJourney', 'kingsOfIsrael', 'kingsOfJudah', 'epistles',
-      'churchHistory', 'theology', 'tabernacle', 'theBookOfEzekiel',
-      'theJourneyOfIsraelites', 'churchAdministration', 'practicum', 'ref'
+      'name', 'examNumber', 'admissionNumber', 'dateOfBirth',
+      // Full subject names
+      'oldTestamentSurvey', 'newTestamentSurvey', 'prophets', 'paulsMissionaryJourney',
+      'churchHistory', 'bookOfHebrew', 'greekLanguage', 'bibleStudyMethod',
+      'bookOfRomans', 'theBookOfJudges', 'abrahamsJourney', 'kingsOfIsrael',
+      'kingsOfJudah', 'epistles', 'hebrewLanguage', 'theology', 'tabernacle',
+      'theBookOfEzekiel', 'theJourneyOfIsraelites', 'churchAdministration',
+      'practicum', 'overallGradePoint', 'overallGrade',
+      // Abbreviated subject names
+      'oldT', 'newT', 'pro', 'pauls', 'hebrewL', 'hebrew', 'greekL',
+      'bibleStu', 'bookOfRo', 'theBookOfJu', 'abrahams', 'kingsOfIsr',
+      'kingsOfJu', 'epis', 'churchHis', 'theol', 'tabe', 'theBookOfEze',
+      'theJourneyOfIsra', 'churchAdmi', 'prac', 'over', 'ref'
     ]
 
     const missingFields = requiredFields.filter(field => !resultData[field])
